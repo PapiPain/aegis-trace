@@ -1,0 +1,24 @@
+{
+  "name": "@aegistrace/node-sdk",
+  "version": "0.1.0",
+  "description": "Zero-Knowledge blind telemetry and dead-weight code pruner",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": [
+    "telemetry",
+    "security",
+    "dead-code",
+    "aegistrace"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.4",
+    "express": "^5.2.1",
+    "typescript": "^7.0.2"
+  }
+}
