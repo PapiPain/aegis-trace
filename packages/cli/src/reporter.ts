@@ -10,6 +10,9 @@ export interface EndpointReportItem {
   endLine: number;
   blindHash: string;
   status: 'ACTIVE' | 'ZOMBIE';
+  isAuthenticated: boolean;
+  authMiddlewares: string[];
+  riskLevel: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
   callCountObserved: number;
   codeSnippet: string[];
 }
@@ -27,6 +30,7 @@ export interface AuditReportData {
     totalDeclaredEndpoints: number;
     activeEndpoints: number;
     zombieEndpoints: number;
+    unauthenticatedZombieEndpoints: number;
     shadowEndpoints?: number;
     totalObservedCalls?: number;
     confidenceLabel?: string;
@@ -53,27 +57,38 @@ export function generateMarkdownReport(data: AuditReportData, outputPath: string
     : 'Full history';
 
   const zombieList = endpoints.filter(e => e.status === 'ZOMBIE');
+  const criticalZombies = zombieList.filter(e => !e.isAuthenticated);
 
   const lines: string[] = [
     '# 🛡️ AegisTrace — Dead-Code & Attack Surface Audit Report',
     '',
     `> **Generated:** \`${metadata.generatedAt}\` | **Version:** \`v${metadata.version}\` | **Window:** \`${windowText}\``,
     `> **Audited Directory:** \`${metadata.targetDirectory}\``,
+    `> **Compliance Mapping:** \`OWASP API9:2023 (Improper Inventory Management)\` · \`SOC2 CC6.1 (Attack Surface Reduction)\``,
     '',
     '---',
     '',
-    '## 📊 Attack Surface & Telemetry Summary',
+    '## 📊 Executive Attack Surface & Telemetry Summary',
     '',
     '| Security Metric | Value |',
     '| :--- | :--- |',
     `| **Total Declared Endpoints (AST)** | \`${summary.totalDeclaredEndpoints}\` |`,
     `| **Active Endpoints (With Traffic)** | \`${summary.activeEndpoints}\` (${totalCalls} total invocations) |`,
     `| **Inactive Endpoints (Zombie Code)** | \`${summary.zombieEndpoints}\` |`,
+    `| **🚨 Unauthenticated Zombie Endpoints (CRITICAL)** | **\`${summary.unauthenticatedZombieEndpoints}\`** |`,
     `| **Shadow Endpoints (Undeclared Traffic)** | \`${shadowCount}\` |`,
     `| **Pruning Confidence Level** | **${confidence}** |`,
     `| **Potential Attack Surface Reduction** | **${summary.attackSurfaceReductionPercentage}%** |`,
     ''
   ];
+
+  if (criticalZombies.length > 0) {
+    lines.push(
+      '### 🚨 CRITICAL SECURITY ALERT: Unauthenticated Zombie Endpoints Detected',
+      `AegisTrace AST inspection identified **${criticalZombies.length} dormant endpoint(s)** with **0 production hits** that lack authentication middleware (\`JWT\`, \`Session\`, \`AuthGuard\`). Dormant unauthenticated routes are the #1 vector for **OWASP API9:2023** breaches and should be pruned or protected immediately.`,
+      ''
+    );
+  }
 
   if (shadowCount > 0) {
     lines.push(
@@ -86,22 +101,31 @@ export function generateMarkdownReport(data: AuditReportData, outputPath: string
   lines.push(
     '---',
     '',
-    '## 🗺️ Complete Endpoint Inventory',
+    '## 🗺️ Complete Endpoint Inventory & Auth Posture',
     '',
-    '| Status | Hits | Method | Normalized Route | Location | Risk Level | Blind Hash (HMAC-SHA256) |',
-    '| :--- | :---: | :---: | :--- | :--- | :---: | :--- |'
+    '| Status | Hits | Method | Normalized Route | Auth Guard | Location | Risk Level | Blind Hash |',
+    '| :--- | :---: | :---: | :--- | :---: | :--- | :--- | :--- |'
   );
 
   for (const ep of endpoints) {
     const statusBadge = ep.status === 'ACTIVE' ? '🟢 `ACTIVE`' : '🔴 `ZOMBIE`';
-    const isDestructive = ['DELETE', 'POST', 'PUT', 'PATCH'].includes(ep.method.toUpperCase());
-    const riskBadge = ep.status === 'ZOMBIE'
-      ? (isDestructive ? '🔥 **HIGH (Mutation)**' : '⚠️ Medium (Read)')
-      : '✅ Safe';
-    const shortHash = `${ep.blindHash.slice(0, 12)}...`;
+    const authBadge = ep.isAuthenticated
+      ? `🔒 \`${ep.authMiddlewares.join(', ')}\``
+      : '🔓 `NONE (Public)`';
+
+    let riskBadge = '✅ Low (Active)';
+    if (ep.riskLevel === 'CRITICAL') {
+      riskBadge = '🚨 **CRITICAL (Unauth Zombie)**';
+    } else if (ep.riskLevel === 'HIGH') {
+      riskBadge = '🔥 **HIGH (Protected Zombie)**';
+    } else if (ep.riskLevel === 'MEDIUM') {
+      riskBadge = '⚠️ **MEDIUM (Public Active)**';
+    }
+
+    const shortHash = `${ep.blindHash.slice(0, 10)}...`;
 
     lines.push(
-      `| ${statusBadge} | \`${ep.callCountObserved}\` | **${ep.method}** | \`${ep.route}\` | \`${ep.file}:${ep.startLine}-${ep.endLine}\` | ${riskBadge} | \`${shortHash}\` |`
+      `| ${statusBadge} | \`${ep.callCountObserved}\` | **${ep.method}** | \`${ep.route}\` | ${authBadge} | \`${ep.file}:${ep.startLine}-${ep.endLine}\` | ${riskBadge} | \`${shortHash}\` |`
     );
   }
 
@@ -116,8 +140,12 @@ export function generateMarkdownReport(data: AuditReportData, outputPath: string
     );
 
     for (const z of zombieList) {
+      const authStatusText = z.isAuthenticated
+        ? `🔒 Protected by \`${z.authMiddlewares.join(', ')}\``
+        : `🚨 **UNAUTHENTICATED (Publicly Exposed)**`;
+
       lines.push(
-        `### 🔴 \`${z.method}${z.route}\` — \`${z.file}\` (Lines ${z.startLine}–${z.endLine})`,
+        `### 🔴 \`${z.method}${z.route}\` — \`${z.file}\` (Lines ${z.startLine}–${z.endLine}) · ${authStatusText}`,
         '',
         '```typescript',
         ...z.codeSnippet.map((line, idx) => `${String(z.startLine + idx).padStart(4, ' ')} | ${line}`),
@@ -133,14 +161,12 @@ export function generateMarkdownReport(data: AuditReportData, outputPath: string
       '',
       '1. **Interactive Cleanup with Automatic Backup (`.aegis.bak`):**',
       '   ```bash',
-      '   npm run prune',
-      '   # or directly via CLI: npx @aegis-trace/cli --prune',
+      '   npx @aegis-trace/cli --prune',
       '   ```',
       '2. **Instant Rollback (1-Click Restore):**',
       '   If you need to restore all modified files back to their exact original state:',
       '   ```bash',
-      '   npm run restore',
-      '   # or directly via CLI: npx @aegis-trace/cli --restore',
+      '   npx @aegis-trace/cli --restore',
       '   ```',
       ''
     );
@@ -155,7 +181,7 @@ export function generateMarkdownReport(data: AuditReportData, outputPath: string
 
   lines.push(
     '---',
-    '*Audited with Zero-Knowledge Blind Indexing by **AegisTrace CLI**.*'
+    '*Audited with Zero-Knowledge Blind Indexing by **AegisTrace SecOps CLI**.*'
   );
 
   fs.writeFileSync(resolvedPath, lines.join('\n'), 'utf8');

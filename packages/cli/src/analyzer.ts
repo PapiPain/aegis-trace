@@ -12,7 +12,16 @@ export interface RouteEntry {
   endLine: number;
   codeSnippet: string[];
   hash: string;
+  isAuthenticated: boolean;
+  authMiddlewares: string[];
 }
+
+const AUTH_KEYWORD_REGEX = /(?:auth|jwt|token|guard|protect|session|admin|role|permission|passport|clerk|supabase|bearer|verify|private|secure|logged|requireAuth|isAuthenticated|checkRole|apiKeyAuth)/i;
+const IGNORED_IDENTIFIERS = new Set([
+  'req', 'res', 'next', 'async', 'await', 'err', 'request', 'response', 'app', 'router',
+  'aegisTrace', 'aegisTraceMiddleware', 'apiKey', 'secretKey', 'express', 'json', 'urlencoded',
+  'cors', 'helmet', 'morgan', 'compression', 'cookieParser', 'rateLimit', 'true', 'false', 'null'
+]);
 
 export class BlindAnalyzer {
   private secretKey: string;
@@ -21,17 +30,11 @@ export class BlindAnalyzer {
     this.secretKey = secretKey;
   }
 
-  // Normalización canónica idéntica a la del SDK
   public normalizeRoute(routePattern: string): string {
     let normalized = routePattern.trim().toLowerCase();
-
-    // Colapsar múltiples slashes accidentales (ej: //api///users -> /api/users)
     normalized = normalized.replace(/\/+/g, '/');
-
-    // Unificar cualquier parámetro dinámico (:id, :userId, :slug) a :param
     normalized = normalized.replace(/:[a-zA-Z0-9_]+/g, ':param');
 
-    // Remover trailing slash excepto si es la raíz '/'
     if (normalized.length > 1 && normalized.endsWith('/')) {
       normalized = normalized.slice(0, -1);
     }
@@ -71,16 +74,14 @@ export class BlindAnalyzer {
     return fileList;
   }
 
-  // Detecta si en los archivos principales se montan routers con prefijo: app.use('/api/users', userRouter)
   public detectRouterPrefixes(files: string[]): Map<string, string> {
     const filePrefixes = new Map<string, string>();
-    const importMap = new Map<string, string>(); // varName -> resolvedFilePath
+    const importMap = new Map<string, string>();
 
     for (const filePath of files) {
       const content = fs.readFileSync(filePath, 'utf8');
       const dir = path.dirname(filePath);
 
-      // 1. Rastrear imports locales: import userRouter from './routes/users'
       const importRegex = /import\s+(?:\{\s*([a-zA-Z0-9_]+)\s*\}|([a-zA-Z0-9_]+))\s+from\s+['"`](\.[^'"`]+)['"`]/g;
       let impMatch: RegExpExecArray | null;
       while ((impMatch = importRegex.exec(content)) !== null) {
@@ -98,15 +99,15 @@ export class BlindAnalyzer {
         }
       }
 
-      // 2. Rastrear montajes: app.use('/api/v1', userRouter)
-      const useRegex = /(?:app|router)\.use\s*\(\s*['"`]([^'"`]+)['"`]\s*,\s*([a-zA-Z0-9_]+)/g;
+      const useRegex = /(?:app|router)\.use\s*\(\s*['"`]([^'"`]+)['"`]\s*,([\s\S]*?)\)/g;
       let useMatch: RegExpExecArray | null;
       while ((useMatch = useRegex.exec(content)) !== null) {
         const prefix = useMatch[1];
-        const routerVar = useMatch[2];
-        const targetFile = importMap.get(routerVar);
-        if (targetFile) {
-          filePrefixes.set(targetFile, prefix);
+        const restArgs = useMatch[2];
+        for (const [varName, targetFile] of importMap.entries()) {
+          if (new RegExp(`\\b${varName}\\b`).test(restArgs)) {
+            filePrefixes.set(targetFile, prefix);
+          }
         }
       }
     }
@@ -114,14 +115,60 @@ export class BlindAnalyzer {
     return filePrefixes;
   }
 
+  private detectRouteAuth(snippet: string[], globalFileAuth: string[]): { isAuthenticated: boolean; authMiddlewares: string[] } {
+    const detected = new Set<string>(globalFileAuth);
+    const fullText = snippet.join('\n');
+
+    if (/\/\/\s*@aegis-auth/i.test(fullText)) {
+      detected.add('@aegis-auth');
+    }
+
+    const headerMatch = fullText.match(/\b(?:app|router)\.(?:get|post|put|delete|patch)\s*\(\s*['"`][^'"`]+['"`]\s*,([\s\S]*)/i);
+    if (headerMatch) {
+      const argsSegment = headerMatch[1];
+      const beforeArrow = argsSegment.split('=>')[0] || argsSegment;
+      const beforeFunction = beforeArrow.split(/\bfunction\b/)[0] || beforeArrow;
+      // Strip parameter list like (req, res, next) at the end of beforeArrow
+      const middlewareZone = beforeFunction.replace(/\(\s*(?:req\vert{}request)\b[^)]*\)\s*$/i, '');
+
+      const identifiers = middlewareZone.match(/\b[a-zA-Z_][a-zA-Z0-9_.]*\b/g) || [];
+      for (const id of identifiers) {
+        if (IGNORED_IDENTIFIERS.has(id)) continue;
+        if (AUTH_KEYWORD_REGEX.test(id)) {
+          detected.add(id);
+        }
+      }
+    }
+
+    const bodyAuthMatch = fullText.match(/\b(?:verifyToken|verifyJwt|checkAuth|requireAuth|getSession|authenticate)\s*\(/i);
+    if (bodyAuthMatch) {
+      detected.add(bodyAuthMatch[0].replace(/\($/, '').trim());
+    }
+
+    const list = Array.from(detected);
+    return {
+      isAuthenticated: list.length > 0,
+      authMiddlewares: list
+    };
+  }
+
   public extractRoutes(filePath: string, routerPrefix: string = ''): RouteEntry[] {
     const content = fs.readFileSync(filePath, 'utf8');
     const lines = content.split('\n');
     const routes: RouteEntry[] = [];
 
-    // Permitir que el usuario fuerce un prefijo con comentario si usa carga dinámica: // @aegis-prefix /api/v1
     const prefixCommentMatch = content.match(/\/\/\s*@aegis-prefix\s+([^\s]+)/);
     const activePrefix = prefixCommentMatch ? prefixCommentMatch[1].trim() : routerPrefix;
+
+    const globalFileAuth: string[] = [];
+    const globalUseRegex = /\b(?:app|router)\.use\s*\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*(?:\(\vert{},\vert{}\))/g;
+    let gMatch: RegExpExecArray | null;
+    while ((gMatch = globalUseRegex.exec(content)) !== null) {
+      const fnName = gMatch[1];
+      if (!IGNORED_IDENTIFIERS.has(fnName) && AUTH_KEYWORD_REGEX.test(fnName)) {
+        globalFileAuth.push(fnName);
+      }
+    }
 
     const methodStartRegex = /\b(?:app|router)\.(get|post|put|delete|patch)\s*\(/i;
     const stringLiteralRegex = /^\s*['"`]([^'"`]+)['"`]/;
@@ -132,7 +179,6 @@ export class BlindAnalyzer {
       const rawLine = lines[i];
       const trimmed = rawLine.trim();
 
-      // Controlar bloques de comentarios /* ... */ (incluyendo los que genera AegisTrace --prune)
       if (inBlockComment) {
         if (trimmed.includes('*/')) {
           inBlockComment = false;
@@ -147,7 +193,6 @@ export class BlindAnalyzer {
         continue;
       }
 
-      // Ignorar comentarios de una sola línea
       if (trimmed.startsWith('//')) {
         continue;
       }
@@ -159,7 +204,6 @@ export class BlindAnalyzer {
       const afterParenIndex = (methodMatch.index || 0) + methodMatch[0].length;
       const restOfFirstLine = rawLine.slice(afterParenIndex);
 
-      // Buscar el path de la ruta en la misma línea o en la siguiente (soporte para Prettier multilínea)
       let rawRoute: string | null = null;
       const sameLineRoute = restOfFirstLine.match(stringLiteralRegex);
 
@@ -174,14 +218,12 @@ export class BlindAnalyzer {
 
       if (!rawRoute) continue;
 
-      // Combinar con prefijo de Router si existe
       const fullRoute = activePrefix
         ? `${activePrefix.replace(/\/$/, '')}/${rawRoute.replace(/^\//, '')}`
         : rawRoute;
 
       const hash = this.hashRoute(method, fullRoute);
 
-      // Balanceo seguro de paréntesis ignorando paréntesis dentro de strings o comentarios
       let endLine = i;
       let openParens = 0;
       let started = false;
@@ -193,12 +235,10 @@ export class BlindAnalyzer {
           const char = line[k];
           const prevChar = k > 0 ? line[k - 1] : '';
 
-          // Si empieza un comentario '//' fuera de un string, ignorar el resto de la línea
           if (!inString && char === '/' && line[k + 1] === '/') {
             break;
           }
 
-          // Manejo de apertura y cierre de comillas (' " `)
           if ((char === "'" || char === '"' || char === '`') && prevChar !== '\\') {
             if (!inString) {
               inString = char;
@@ -208,7 +248,6 @@ export class BlindAnalyzer {
             continue;
           }
 
-          // Solo contar paréntesis si NO estamos dentro de un texto entre comillas
           if (!inString) {
             if (char === '(') {
               openParens++;
@@ -226,6 +265,7 @@ export class BlindAnalyzer {
       }
 
       const snippet = lines.slice(i, endLine + 1);
+      const authInfo = this.detectRouteAuth(snippet, globalFileAuth);
 
       routes.push({
         method,
@@ -236,7 +276,9 @@ export class BlindAnalyzer {
         startLine: i + 1,
         endLine: endLine + 1,
         codeSnippet: snippet,
-        hash
+        hash,
+        isAuthenticated: authInfo.isAuthenticated,
+        authMiddlewares: authInfo.authMiddlewares
       });
 
       i = endLine;

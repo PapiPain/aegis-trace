@@ -6,6 +6,7 @@ import * as readline from 'readline';
 import { BlindAnalyzer, RouteEntry } from './analyzer';
 import {
   AuditReportData,
+  EndpointReportItem,
   generateJsonReport,
   generateMarkdownReport
 } from './reporter';
@@ -120,7 +121,7 @@ async function fetchIngestedHashes(days?: number): Promise<Map<string, number>> 
     });
 
     if (!res.ok) {
-      throw new Error(`Server error (${res.status}):${await res.text()}`);
+      throw new Error(`Server error (${res.status}): ${await res.text()}`);
     }
 
     const data = await res.json() as { hashes: Array<string | { hash: string; calls: number }> };
@@ -137,7 +138,6 @@ async function fetchIngestedHashes(days?: number): Promise<Map<string, number>> 
     }
     return hashMetrics;
   } catch (err: any) {
-    // Automatic fallback to Zero-Server local file if Ingestion API is unreachable
     const localMap = readLocalTelemetryFile(sinceTimestamp);
     if (localMap) {
       return localMap;
@@ -164,15 +164,27 @@ function removeLines(filePath: string, startLine: number, endLine: number) {
   fs.writeFileSync(filePath, fileLines.join('\n'), 'utf8');
 }
 
+function computeRiskLevel(isAlive: boolean, isAuthenticated: boolean): 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' {
+  if (!isAlive && !isAuthenticated) return 'CRITICAL';
+  if (!isAlive && isAuthenticated) return 'HIGH';
+  if (isAlive && !isAuthenticated) return 'MEDIUM';
+  return 'LOW';
+}
+
 async function handleZombieRoute(route: RouteEntry, confidenceLabel: string): Promise<'modified' | 'skipped'> {
+  const authBanner = route.isAuthenticated
+    ? `PROTECTED (${route.authMiddlewares.join(', ')})`
+    : '🚨 CRITICAL: UNAUTHENTICATED PUBLIC ENDPOINT';
+
   console.log('\n------------------------------------------------------------');
   console.log(`ALERT: Zombie Code detected in ${route.file} (Lines ${route.startLine}-${route.endLine})`);
-  console.log(`Endpoint   : ${route.method}${route.fullRoute}`);
+  console.log(`Endpoint   : ${route.method} ${route.fullRoute}`);
+  console.log(`Auth Guard : ${authBanner}`);
   console.log(`Confidence : ${confidenceLabel}`);
   console.log('Affected code preview:');
   console.log('------------------------------------------------------------');
   route.codeSnippet.forEach((line, idx) => {
-    console.log(`  ${route.startLine + idx} \vert{}${line}`);
+    console.log(`  ${route.startLine + idx} | ${line}`);
   });
   console.log('------------------------------------------------------------');
 
@@ -234,7 +246,6 @@ async function main() {
     ? path.resolve(process.cwd(), customDir)
     : path.resolve(__dirname, '../../../apps/test-service/src');
 
-  // Quick safe rollback command (--restore)
   if (args.includes('--restore')) {
     console.log('===================================================================');
     console.log('           AEGIS-TRACE : BACKUP RESTORATION (.aegis.bak)           ');
@@ -259,12 +270,12 @@ async function main() {
   if (days) {
     console.log(`Time Window      : Last ${days} day(s)`);
   }
-  console.log('Synchronizing cryptographic telemetry with SQLite...');
+  console.log('Synchronizing cryptographic telemetry...');
 
   const activeHashMap = await fetchIngestedHashes(days);
   const totalObservedCalls = Array.from(activeHashMap.values()).reduce((acc, v) => acc + v, 0);
 
-  console.log(`✔ Active hashes retrieved from API: ${activeHashMap.size} (${totalObservedCalls} total calls)`);
+  console.log(`✔ Active hashes retrieved: ${activeHashMap.size} (${totalObservedCalls} total calls)`);
   console.log(`Target Directory : ${targetPath}\n`);
 
   const analyzer = new BlindAnalyzer(CLIENT_SECRET);
@@ -284,12 +295,11 @@ async function main() {
 
   const activeRoutes = declaredRoutes.filter(r => activeHashMap.has(r.hash));
   const zombieRoutes = declaredRoutes.filter(r => !activeHashMap.has(r.hash));
+  const unauthenticatedZombies = zombieRoutes.filter(r => !r.isAuthenticated);
 
-  // Detect Shadow Endpoints (Traffic observed in runtime that does not match any static AST route)
   const declaredHashSet = new Set(declaredRoutes.map(r => r.hash));
   const shadowHashesCount = Array.from(activeHashMap.keys()).filter(h => !declaredHashSet.has(h)).length;
 
-  // Calculate statistical confidence level based on observed traffic volume
   const confidenceLabel = totalObservedCalls >= 50
     ? 'HIGH (Representative traffic volume)'
     : totalObservedCalls > 0
@@ -301,25 +311,29 @@ async function main() {
     const calls = activeHashMap.get(route.hash) || 0;
     const isAlive = calls > 0;
     const status = isAlive ? `[ACTIVE: ${calls} hits]`.padEnd(18) : '[ZOMBIE: 0 hits]  ';
-    console.log(`${status} ${route.method.padEnd(6)}${route.fullRoute.padEnd(26)} -> ${route.file}:${route.startLine} (Lines ${route.startLine}-${route.endLine})`);
+    const authTag = route.isAuthenticated
+      ? `[🔒 AUTH]`.padEnd(11)
+      : (isAlive ? `[🔓 PUBLIC]` : `[🚨 NO-AUTH]`);
+    console.log(`${status} ${authTag} ${route.method.padEnd(6)} ${route.fullRoute.padEnd(26)} -> ${route.file}:${route.startLine}`);
   }
 
   const reductionPct = totalRoutes > 0 
     ? Number(((zombieRoutes.length / totalRoutes) * 100).toFixed(1))
     : 0;
 
-  console.log('\n--- ATTACK SURFACE METRICS ---');
-  console.log(`Total declared endpoints   : ${totalRoutes}`);
-  console.log(`Active endpoints (traffic) : ${activeRoutes.length}`);
-  console.log(`Inactive endpoints (zombie): ${zombieRoutes.length}`);
-  console.log(`Shadow Endpoints detected  : ${shadowHashesCount}`);
-  console.log(`Pruning confidence level   : ${confidenceLabel}`);
-  console.log(`Attack surface reduction   : ${reductionPct}%\n`);
+  console.log('\n--- ATTACK SURFACE & SECURITY METRICS ---');
+  console.log(`Total declared endpoints         : ${totalRoutes}`);
+  console.log(`Active endpoints (traffic)       : ${activeRoutes.length}`);
+  console.log(`Inactive endpoints (zombie)      : ${zombieRoutes.length}`);
+  console.log(`Unauthenticated zombies (CRIT)   : ${unauthenticatedZombies.length}`);
+  console.log(`Shadow Endpoints detected        : ${shadowHashesCount}`);
+  console.log(`Pruning confidence level         : ${confidenceLabel}`);
+  console.log(`Attack surface reduction         : ${reductionPct}%\n`);
 
   const reportPayload: AuditReportData = {
     metadata: {
       tool: 'AegisTrace CLI',
-      version: '1.0.1',
+      version: '1.1.0',
       generatedAt: new Date().toISOString(),
       targetDirectory: targetPath,
       apiKey: API_KEY,
@@ -329,12 +343,13 @@ async function main() {
       totalDeclaredEndpoints: totalRoutes,
       activeEndpoints: activeRoutes.length,
       zombieEndpoints: zombieRoutes.length,
+      unauthenticatedZombieEndpoints: unauthenticatedZombies.length,
       shadowEndpoints: shadowHashesCount,
       totalObservedCalls,
       confidenceLabel,
       attackSurfaceReductionPercentage: reductionPct
     },
-    endpoints: declaredRoutes.map(route => {
+    endpoints: declaredRoutes.map((route): EndpointReportItem => {
       const isAlive = activeHashMap.has(route.hash);
       return {
         method: route.method,
@@ -345,6 +360,9 @@ async function main() {
         endLine: route.endLine,
         blindHash: route.hash,
         status: isAlive ? 'ACTIVE' : 'ZOMBIE',
+        isAuthenticated: route.isAuthenticated,
+        authMiddlewares: route.authMiddlewares,
+        riskLevel: computeRiskLevel(isAlive, route.isAuthenticated),
         callCountObserved: activeHashMap.get(route.hash) || 0,
         codeSnippet: route.codeSnippet
       };
@@ -371,7 +389,6 @@ async function main() {
     return;
   }
 
-  // Group by file and sort descending by line number to avoid shifting line indices
   const sortedZombies = [...zombieRoutes].sort((a, b) => {
     const fileCompare = a.filePath.localeCompare(b.filePath);
     if (fileCompare !== 0) return fileCompare;
