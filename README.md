@@ -42,16 +42,13 @@ Traditional static analysis tools (`knip`, `ts-prune`, `eslint`) cannot detect u
 ## 🚀 2. Complete Step-by-Step User Guide (From Setup to Rollback)
 
 Below is the exact workflow a developer follows when integrating AegisTrace into any Express project:
-
 ### Phase A: Installing & Recording Blind Traffic
-
 **Step 1:** Install the lightweight SDK middleware in your Express project:
 ```bash
+
 npm install @aegis-trace/node-sdk
 
-
 Step 2: Add the middleware to your main Express file (app.ts or server.ts) before declaring your routes:
-
 import express from 'express';
 import { aegisMiddleware } from '@aegis-trace/node-sdk';
 
@@ -81,22 +78,17 @@ By default, AegisTrace NEVER modifies, comments out, or deletes your files. It r
 npx @aegis-trace/cli --dir=./src --local
 
 What this step does:
-
 Scans all files inside ./src.
-
 Reads the blind hashes from .aegis-local.json.
-
 Prints a complete terminal summary showing which routes are [ACTIVO] and which routes are [ZOMBI: 0 hits], along with their exact file and line number (e.g., app.ts:38).
 
 Phase C: Generating the Explicit Line-by-Line Audit Document
 If you want a formal, shareable document that explicitly states which exact lines of code are doing nothing, their isolated code snippet, their cryptographic hash, and the exact security metrics:
 
 Option 1 — Generate a Detailed Markdown Report (SECURITY_AUDIT.md):
-
 npx @aegis-trace/cli --dir=./src --local --output=SECURITY_AUDIT.md --format=markdown
 
 Option 2 — Generate a Machine-Readable JSON Report (audit-report.json):
-
 npx @aegis-trace/cli --dir=./src --local --output=audit-report.json --format=json
 
 📄 What the Generated Document Explicitly Contains:
@@ -114,28 +106,18 @@ If you only wanted the audit document (SECURITY_AUDIT.md) for security complianc
 
 Choice 2: Interactive Safe Commenting (--prune) — Recommended
 If you want AegisTrace to neutralize dead routes step-by-step without losing the code:
-
 npx @aegis-trace/cli --dir=./src --local --prune
-
 What happens step-by-step during --prune:
-
 AegisTrace shows you each Zombie Endpoint one by one in the terminal (e.g., GET /api/legacy/export-v1 in src/app.ts [Lines 38-40]).
-
 It asks for your confirmation: ¿Neutralizar este endpoint zombi? (s/N).
-
 If you type n (or press Enter): AegisTrace skips that route and leaves those lines untouched.
-
 If you type s:
-
 AegisTrace first creates an exact backup copy of your original file (src/app.ts.aegis.bak).
-
 It wraps the exact dead lines (startLine to endLine) in a clear [AEGIS-TRACE ZOMBIE PRUNED] comment block (//), disabling the route while keeping the code visible in your file.
 
 Choice 3: Physical Line Deletion (--prune --delete)
 If you want AegisTrace to physically remove the dead lines from the file instead of commenting them out:
-
 npx @aegis-trace/cli --dir=./src --local --prune --delete
-
 (Even when using --delete, AegisTrace still creates the .aegis.bak backup file first so you are protected against mistakes).
 
 Phase E: Instant Rollback / Undo (--restore)
