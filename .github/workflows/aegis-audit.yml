@@ -24,8 +24,10 @@ jobs:
         with:
           node-version: 22
 
-      - name: Instalar dependencias del Monorepo
-        run: npm install
+      - name: Instalar dependencias del Monorepo (Linux Native)
+        run: |
+          rm -f package-lock.json
+          npm install
 
       - name: Compilar paquetes de AegisTrace
         run: npm run build
