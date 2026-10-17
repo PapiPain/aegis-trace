@@ -1,5 +1,3 @@
-$bt = '```'
-$readme = @"
 # 🛡️ AegisTrace — Zero-Knowledge API Dead-Code & Attack Surface Auditor
 
 [![NPM SDK Version](https://img.shields.io/npm/v/@aegis-trace/node-sdk?label=%40aegis-trace%2Fnode-sdk&color=blue)](https://www.npmjs.com/package/@aegis-trace/node-sdk)
@@ -12,19 +10,20 @@ $readme = @"
 
 ## 📖 Table of Contents / Tabla de Contenidos
 
-1. [How AegisTrace Works Internally (5-Stage Architecture)](#section-1)
-2. [Complete Step-by-Step User Guide (From Setup to Rollback)](#section-2)
+1. [How AegisTrace Works Internally (5-Stage Architecture)](#sec-1)
+2. [Complete Step-by-Step User Guide (From Setup to Rollback)](#sec-2)
    - [Phase A: Installing & Recording Blind Traffic](#phase-a)
    - [Phase B: Auditing in Read-Only Mode (No Code Modified)](#phase-b)
    - [Phase C: Generating the Explicit Line-by-Line Audit Document](#phase-c)
    - [Phase D: Deciding What to Do with Dead Code (Keep, Comment Out, or Delete)](#phase-d)
    - [Phase E: Instant Rollback / Undo (`--restore`)](#phase-e)
-3. [Complete CLI Flags Reference](#section-3)
-4. [Guía Completa Paso a Paso (Español)](#section-4)
+3. [Complete CLI Flags Reference](#sec-3)
+4. [Guía Completa Paso a Paso (Español)](#sec-4)
 
 ---
 
-<a id="section-1"></a>
+<a id="sec-1"></a>
+
 ## ⚙️ 1. How AegisTrace Works Internally (5-Stage Architecture)
 
 Traditional static analysis tools (`knip`, `ts-prune`, `eslint`) cannot detect unused Express routes (`app.get`, `router.post`) because route handlers are passed as anonymous callbacks bound to the router object—meaning they always appear "referenced" in memory even if nobody calls them in production. **AegisTrace solves this through 5 automated stages:**
@@ -39,74 +38,74 @@ Traditional static analysis tools (`knip`, `ts-prune`, `eslint`) cannot detect u
 
 ---
 
-<a id="section-2"></a>
+<a id="sec-2"></a>
+
 ## 🚀 2. Complete Step-by-Step User Guide (From Setup to Rollback)
 
 Below is the exact workflow a developer follows when integrating AegisTrace into any Express project:
 
 <a id="phase-a"></a>
+
 ### Phase A: Installing & Recording Blind Traffic
 
 1. **Step 1 — Install the lightweight SDK middleware in your Express project:**
-   `$bt`bash
-   npm install @aegis-trace/node-sdk
-   `$bt`
+
+        npm install @aegis-trace/node-sdk
+
 2. **Step 2 — Register the middleware in your main Express file (`app.ts` or `server.ts`) before declaring your routes:**
-   `$bt`typescript
-   import express from 'express';
-   import { aegisMiddleware } from '@aegis-trace/node-sdk';
 
-   const app = express();
+        import express from 'express';
+        import { aegisMiddleware } from '@aegis-trace/node-sdk';
 
-   // Zero-Server Local Mode: stores blind HMAC-SHA256 hashes locally in .aegis-local.json
-   app.use(aegisMiddleware({
-     secret: process.env.AEGIS_SECRET || 'your-private-hmac-secret',
-     localMode: true,
-     localFilePath: './.aegis-local.json'
-   }));
-   `$bt`
+        const app = express();
+
+        // Zero-Server Local Mode: stores blind HMAC-SHA256 hashes locally in .aegis-local.json
+        app.use(aegisMiddleware({
+          secret: process.env.AEGIS_SECRET || 'your-private-hmac-secret',
+          localMode: true,
+          localFilePath: './.aegis-local.json'
+        }));
+
    *As your application runs in staging or production, `.aegis-local.json` (or the SQLite server) quietly accumulates hit counts per cryptographic hash.*
 
 <a id="phase-b"></a>
+
 ### Phase B: Auditing in Read-Only Mode (No Code Modified)
 
 By default, **AegisTrace NEVER modifies, comments out, or deletes your files.** It runs in strict **Read-Only (`--dry-run`)** mode so you can inspect your project safely:
 
-`$bt`bash
-npx @aegis-trace/cli --dir=./src --local
-`$bt`
+    npx @aegis-trace/cli --dir=./src --local
 
-* **Scans all files inside `./src`** and reads the blind hashes from `.aegis-local.json`.
-* **Prints a complete terminal summary** showing which routes are `[ACTIVE]` and which routes are `[ZOMBIE: 0 hits]`, along with their exact file and line range (`e.g., app.ts:38 (Lines 38-40)`).
+- **Scans all files inside `./src`** and reads the blind hashes from `.aegis-local.json`.
+- **Prints a complete terminal summary** showing which routes are `[ACTIVE]` and which routes are `[ZOMBIE: 0 hits]`, along with their exact file and line range (`app.ts:38 (Lines 38-40)`).
 
 <a id="phase-c"></a>
+
 ### Phase C: Generating the Explicit Line-by-Line Audit Document
 
 If you need a formal, shareable document that explicitly states **which exact lines of code are doing nothing**, their isolated code snippet, their cryptographic hash, and the exact security metrics:
 
-* **Option 1 — Generate a Detailed Markdown Report (`SECURITY_AUDIT.md`):**
-  `$bt`bash
-  npx @aegis-trace/cli --dir=./src --local --output=SECURITY_AUDIT.md --format=markdown
-  `$bt`
-* **Option 2 — Generate a Machine-Readable JSON Report (`audit-report.json`):**
-  `$bt`bash
-  npx @aegis-trace/cli --dir=./src --local --output=audit-report.json --format=json
-  `$bt`
-* **What the Generated Document Explicitly Contains:**
-  1. **Executive Metrics:** Total declared endpoints, active endpoints, zombie endpoints (`0 hits`), shadow endpoints, **Attack Surface Reduction (%)**, and **Statistical Confidence Level**.
-  2. **Line-by-Line Inventory Table:** Lists every route with its HTTP Method, normalized path, **exact file and line range (`startLine`–`endLine`)**, risk level (`HIGH (Mutation)` vs `Medium (Read)`), hit count, and `HMAC-SHA256` signature.
-  3. **Isolated Dead Code Snippets:** Prints the exact block of code inside those lines so developers can verify what the unused endpoint does without opening the editor.
+    # Option 1: Generate a Detailed Markdown Report (SECURITY_AUDIT.md)
+    npx @aegis-trace/cli --dir=./src --local --output=SECURITY_AUDIT.md --format=markdown
+
+    # Option 2: Generate a Machine-Readable JSON Report (audit-report.json)
+    npx @aegis-trace/cli --dir=./src --local --output=audit-report.json --format=json
+
+- **Executive Metrics:** Total declared endpoints, active endpoints, zombie endpoints (`0 hits`), shadow endpoints, **Attack Surface Reduction (%)**, and **Statistical Confidence Level**.
+- **Line-by-Line Inventory Table:** Lists every route with its HTTP Method, normalized path, **exact file and line range (`startLine`–`endLine`)**, risk level (`HIGH (Mutation)` vs `Medium (Read)`), hit count, and `HMAC-SHA256` signature.
+- **Isolated Dead Code Snippets:** Prints the exact block of code inside those lines so developers can verify what the unused endpoint does without opening the editor.
 
 <a id="phase-d"></a>
+
 ### Phase D: Deciding What to Do with Dead Code (Keep, Comment Out, or Delete)
 
 Once you review the report, **you have 100% control over whether to touch the code or not**:
 
 1. **Choice 1 — Do Nothing (Keep the Code Intact):** If you only wanted the audit document (`SECURITY_AUDIT.md`) for security compliance or manual review, simply stop here. None of your source files have been altered.
 2. **Choice 2 — Interactive Assistant (`--prune`):** Run the interactive assistant to decide route-by-route what to do:
-   `$bt`bash
-   npx @aegis-trace/cli --dir=./src --local --prune
-   `$bt`
+
+        npx @aegis-trace/cli --dir=./src --local --prune
+
    For each detected Zombie Endpoint, AegisTrace displays the affected code lines (`startLine`–`endLine`) and presents **4 explicit options (`[c/d/s/q]`)**:
    - **`[c]` Comment out code block (Safe, reversible):** Asks for confirmation (`[y/n]`), creates an automatic backup (`<file>.aegis.bak`), and wraps the exact dead lines in a `/* [AegisTrace: Dead-Code Audit] ... */` comment block.
    - **`[d]` Delete code block permanently:** Displays a security warning and requires typing `"DELETE"` to confirm, creates an automatic backup (`<file>.aegis.bak`), and physically removes the dead lines from the file.
@@ -114,19 +113,19 @@ Once you review the report, **you have 100% control over whether to touch the co
    - **`[q]` Quit assistant:** Immediately exits the interactive process.
 
 <a id="phase-e"></a>
+
 ### Phase E: Instant Rollback / Undo (`--restore`)
 
 If you change your mind after commenting out or deleting routes, you can **undo all changes in 1 second** with a single command:
 
-`$bt`bash
-npx @aegis-trace/cli --dir=./src --restore
-`$bt`
+    npx @aegis-trace/cli --dir=./src --restore
 
-* **Automatic File Restoration:** Searches your directory for all `.aegis.bak` backup files, restores every modified `.ts` / `.js` file back to its exact original state, and removes the temporary `.aegis.bak` files.
+- **Automatic File Restoration:** Searches your directory for all `.aegis.bak` backup files, restores every modified `.ts` / `.js` file back to its exact original state, and removes the temporary `.aegis.bak` files.
 
 ---
 
-<a id="section-3"></a>
+<a id="sec-3"></a>
+
 ## 🛠️ 3. Complete CLI Flags Reference
 
 | Flag / Option | Description | Default |
@@ -142,7 +141,8 @@ npx @aegis-trace/cli --dir=./src --restore
 
 ---
 
-<a id="section-4"></a>
+<a id="sec-4"></a>
+
 ## 🇪🇸 4. Guía Completa Paso a Paso (Español)
 
 1. **Paso 1 — Recolección Ciega en Tiempo de Ejecución (`@aegis-trace/node-sdk`):** Instalas el middleware en tu servidor Express. Cada petición legítima se normaliza (`/api/users/123` -> `GET:/api/users/:id`), ignora el ruido de bots (`404`) y se convierte localmente en un hash criptográfico ciego (`HMAC-SHA256`) guardado en `.aegis-local.json` (Modo Local) o en SQLite (Modo Cloud).
@@ -159,5 +159,5 @@ npx @aegis-trace/cli --dir=./src --restore
 ---
 
 ## 📄 License
+
 MIT © Ezequiel Canales
-"@
