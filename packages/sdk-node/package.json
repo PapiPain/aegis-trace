@@ -1,5 +1,5 @@
 {
-  "name": "@aegistrace/node-sdk",
+  "name": "@aegis-trace/node-sdk",
   "version": "1.0.0",
   "description": "Zero-Knowledge blind telemetry middleware for Node.js & Express APIs",
   "main": "dist/index.js",

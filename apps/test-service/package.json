@@ -8,7 +8,7 @@
     "dev": "tsx src/app.ts"
   },
   "dependencies": {
-    "@aegistrace/node-sdk": "*",
+    "@aegis-trace/node-sdk": "*",
     "express": "^5.0.0"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
 {
-  "name": "@aegistrace/cli",
+  "name": "@aegis-trace/cli",
   "version": "1.0.0",
   "description": "Zero-Knowledge dead-code & API attack surface auditor CLI",
   "main": "dist/index.js",

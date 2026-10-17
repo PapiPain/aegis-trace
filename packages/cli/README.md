@@ -15,4 +15,4 @@
 
 ### 1. Install the Middleware SDK
 ```bash
-npm install @aegistrace/node-sdk
+npm install @aegis-trace/node-sdk

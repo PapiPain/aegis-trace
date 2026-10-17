@@ -1,5 +1,5 @@
 import express from 'express';
-import { aegisTrace } from '@aegistrace/node-sdk';
+import { aegisTrace } from '@aegis-trace/node-sdk';
 
 const app = express();
 const PORT = 3000;
