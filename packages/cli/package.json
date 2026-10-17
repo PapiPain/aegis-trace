@@ -1,41 +1,38 @@
 {
-    "name":  "@aegis-trace/cli",
-    "version":  "1.3.0",
-    "description":  "Zero-Knowledge dead-code \u0026 API attack surface auditor CLI",
-    "main":  "dist/index.js",
-    "types":  "dist/index.d.ts",
-    "bin":  {
-                "aegis-trace":  "dist/index.js",
-                "aegistrace":  "dist/index.js"
-            },
-    "files":  [
-                  "dist"
-              ],
-    "scripts":  {
-                    "build":  "tsc",
-                    "scan":  "tsx src/index.ts",
-                    "prepublishOnly":  "npm run build"
-                },
-    "publishConfig":  {
-                          "access":  "public"
-                      },
-    "engines":  {
-                    "node":  "\u003e=18.0.0"
-                },
-    "keywords":  [
-                     "security",
-                     "zero-knowledge",
-                     "telemetry",
-                     "dead-code",
-                     "audit",
-                     "ast",
-                     "attack-surface"
-                 ],
-    "author":  "Ezequiel Canales",
-    "license":  "MIT",
-    "devDependencies":  {
-                            "@types/node":  "^22.0.0",
-                            "tsx":  "^4.19.0",
-                            "typescript":  "^5.5.0"
-                        }
+  "name": "@aegis-trace/cli",
+  "version": "1.3.0",
+  "description": "Zero-Knowledge API Dead-Code & Attack Surface Auditor for Node.js & Express (AST + HMAC-SHA256 Telemetry)",
+  "main": "dist/index.js",
+  "bin": {
+    "aegis-trace": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "express",
+    "dead-code",
+    "api-security",
+    "ast",
+    "zero-knowledge",
+    "devsecops",
+    "telemetry",
+    "nodejs",
+    "owasp"
+  ],
+  "author": "Ezequiel Canales",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PapiPain/aegis-trace.git"
+  },
+  "homepage": "https://github.com/PapiPain/aegis-trace#readme",
+  "bugs": {
+    "url": "https://github.com/PapiPain/aegis-trace/issues"
+  }
 }
