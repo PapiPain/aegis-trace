@@ -1,13 +1,13 @@
 {
   "name": "@aegis-trace/cli",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Zero-Knowledge dead-code & API attack surface auditor CLI",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-  "aegis-trace": "dist/index.js",
-  "aegistrace": "dist/index.js"
-},
+    "aegis-trace": "dist/index.js",
+    "aegistrace": "dist/index.js"
+  },
   "files": [
     "dist"
   ],

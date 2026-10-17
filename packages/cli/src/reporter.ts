@@ -38,7 +38,7 @@ export interface AuditReportData {
 export function generateJsonReport(data: AuditReportData, outputPath: string): void {
   const resolvedPath = path.resolve(process.cwd(), outputPath);
   fs.writeFileSync(resolvedPath, JSON.stringify(data, null, 2), 'utf8');
-  console.log(`✔ Reporte JSON guardado en: ${resolvedPath}`);
+  console.log(`✔ JSON report saved at: ${resolvedPath}`);
 }
 
 export function generateMarkdownReport(data: AuditReportData, outputPath: string): void {
@@ -47,38 +47,38 @@ export function generateMarkdownReport(data: AuditReportData, outputPath: string
 
   const shadowCount = summary.shadowEndpoints ?? 0;
   const totalCalls = summary.totalObservedCalls ?? 0;
-  const confidence = summary.confidenceLabel ?? 'MEDIA (Muestra de tráfico moderada)';
+  const confidence = summary.confidenceLabel ?? 'MEDIUM (Moderate traffic sample)';
   const windowText = metadata.observationDays
-    ? `Últimos ${metadata.observationDays} día(s)`
-    : 'Histórico completo';
+    ? `Last ${metadata.observationDays} day(s)`
+    : 'Full history';
 
   const zombieList = endpoints.filter(e => e.status === 'ZOMBIE');
 
   const lines: string[] = [
-    '# 🛡️ AegisTrace — Reporte de Auditoría de Código Muerto',
+    '# 🛡️ AegisTrace — Dead-Code & Attack Surface Audit Report',
     '',
-    `> **Generado:** \`${metadata.generatedAt}\` | **Versión:** \`v${metadata.version}\` | **Ventana:** \`${windowText}\``,
-    `> **Directorio Auditado:** \`${metadata.targetDirectory}\``,
+    `> **Generated:** \`${metadata.generatedAt}\` | **Version:** \`v${metadata.version}\` | **Window:** \`${windowText}\``,
+    `> **Audited Directory:** \`${metadata.targetDirectory}\``,
     '',
     '---',
     '',
-    '## 📊 Resumen de Superficie de Ataque y Telemetría',
+    '## 📊 Attack Surface & Telemetry Summary',
     '',
-    '| Métrica de Seguridad | Valor |',
+    '| Security Metric | Value |',
     '| :--- | :--- |',
-    `| **Total de Endpoints Declarados (AST)** | \`${summary.totalDeclaredEndpoints}\` |`,
-    `| **Endpoints Activos (Con Tráfico)** | \`${summary.activeEndpoints}\` (${totalCalls} invocaciones totales) |`,
-    `| **Endpoints Inactivos (Código Zombi)** | \`${summary.zombieEndpoints}\` |`,
-    `| **Shadow Endpoints (Tráfico no declarado)** | \`${shadowCount}\` |`,
-    `| **Nivel de Confianza de Poda** | **${confidence}** |`,
-    `| **Reducción Potencial de Superficie de Ataque** | **${summary.attackSurfaceReductionPercentage}%** |`,
+    `| **Total Declared Endpoints (AST)** | \`${summary.totalDeclaredEndpoints}\` |`,
+    `| **Active Endpoints (With Traffic)** | \`${summary.activeEndpoints}\` (${totalCalls} total invocations) |`,
+    `| **Inactive Endpoints (Zombie Code)** | \`${summary.zombieEndpoints}\` |`,
+    `| **Shadow Endpoints (Undeclared Traffic)** | \`${shadowCount}\` |`,
+    `| **Pruning Confidence Level** | **${confidence}** |`,
+    `| **Potential Attack Surface Reduction** | **${summary.attackSurfaceReductionPercentage}%** |`,
     ''
   ];
 
   if (shadowCount > 0) {
     lines.push(
-      '### ⚠️ Alerta de Seguridad: Shadow Endpoints Detectados',
-      `Se detectaron **${shadowCount} hash(es) de telemetría activa** en el servidor que no coinciden con ninguna ruta declarada estáticamente en el código analizado. Esto puede deberse a middlewares dinámicos, rutas heredadas ocultas o peticiones previas no normalizadas.`,
+      '### ⚠️ Security Alert: Shadow Endpoints Detected',
+      `Detected **${shadowCount} active telemetry hash(es)** in runtime that do not match any statically declared route in the analyzed codebase. This may be caused by dynamic middleware, hidden legacy routes, or unnormalized requests.`,
       ''
     );
   }
@@ -86,18 +86,18 @@ export function generateMarkdownReport(data: AuditReportData, outputPath: string
   lines.push(
     '---',
     '',
-    '## 🗺️ Inventario Completo de Endpoints',
+    '## 🗺️ Complete Endpoint Inventory',
     '',
-    '| Estado | Hits | Método | Ruta Normalizada | Ubicación | Nivel de Riesgo | Blind Hash (HMAC-SHA256) |',
+    '| Status | Hits | Method | Normalized Route | Location | Risk Level | Blind Hash (HMAC-SHA256) |',
     '| :--- | :---: | :---: | :--- | :--- | :---: | :--- |'
   );
 
   for (const ep of endpoints) {
-    const statusBadge = ep.status === 'ACTIVE' ? '🟢 `ACTIVA`' : '🔴 `ZOMBI`';
+    const statusBadge = ep.status === 'ACTIVE' ? '🟢 `ACTIVE`' : '🔴 `ZOMBIE`';
     const isDestructive = ['DELETE', 'POST', 'PUT', 'PATCH'].includes(ep.method.toUpperCase());
     const riskBadge = ep.status === 'ZOMBIE'
-      ? (isDestructive ? '🔥 **ALTO (Mutación)**' : '⚠️ Medio (Lectura)')
-      : '✅ Seguro';
+      ? (isDestructive ? '🔥 **HIGH (Mutation)**' : '⚠️ Medium (Read)')
+      : '✅ Safe';
     const shortHash = `${ep.blindHash.slice(0, 12)}...`;
 
     lines.push(
@@ -109,15 +109,15 @@ export function generateMarkdownReport(data: AuditReportData, outputPath: string
 
   if (zombieList.length > 0) {
     lines.push(
-      '## 🧟 Detalle de Código Zombi Candidato a Poda',
+      '## 🧟 Zombie Code Candidates for Pruning (Unused Lines)',
       '',
-      'Los siguientes bloques de código no registraron tráfico legítimo durante el período de observación y representan superficie de ataque innecesaria:',
+      'The following code blocks registered zero legitimate runtime traffic during the observation period and represent unnecessary attack surface:',
       ''
     );
 
     for (const z of zombieList) {
       lines.push(
-        `### 🔴 \`${z.method}${z.route}\` — \`${z.file}\` (Líneas ${z.startLine}–${z.endLine})`,
+        `### 🔴 \`${z.method}${z.route}\` — \`${z.file}\` (Lines ${z.startLine}–${z.endLine})`,
         '',
         '```typescript',
         ...z.codeSnippet.map((line, idx) => `${String(z.startLine + idx).padStart(4, ' ')} | ${line}`),
@@ -129,26 +129,26 @@ export function generateMarkdownReport(data: AuditReportData, outputPath: string
     lines.push(
       '---',
       '',
-      '## 🛠️ Guía de Mitigación Segura (No Destructiva)',
+      '## 🛠️ Safe Mitigation Guide (Non-Destructive)',
       '',
-      '1. **Limpieza Interactiva con Respaldo Automático (`.aegis.bak`):**',
+      '1. **Interactive Cleanup with Automatic Backup (`.aegis.bak`):**',
       '   ```bash',
       '   npm run prune',
-      '   # o directamente: npx aegis-trace --prune',
+      '   # or directly via CLI: npx @aegis-trace/cli --prune',
       '   ```',
-      '2. **Reversión Instantánea (Roll-back en 1 clic):**',
-      '   Si necesitas restaurar todos los archivos intervenidos a su estado exacto original:',
+      '2. **Instant Rollback (1-Click Restore):**',
+      '   If you need to restore all modified files back to their exact original state:',
       '   ```bash',
       '   npm run restore',
-      '   # o directamente: npx aegis-trace --restore',
+      '   # or directly via CLI: npx @aegis-trace/cli --restore',
       '   ```',
       ''
     );
   } else {
     lines.push(
-      '## ✅ Superficie de Ataque Óptima',
+      '## ✅ Optimal Attack Surface',
       '',
-      'No se detectaron endpoints zombi en este escaneo. Todas las rutas declaradas registran actividad verificada.',
+      'No zombie endpoints were detected in this scan. All declared routes show verified runtime activity.',
       ''
     );
   }
@@ -159,5 +159,5 @@ export function generateMarkdownReport(data: AuditReportData, outputPath: string
   );
 
   fs.writeFileSync(resolvedPath, lines.join('\n'), 'utf8');
-  console.log(`✔ Reporte Markdown guardado en: ${resolvedPath}`);
+  console.log(`✔ Markdown report saved at: ${resolvedPath}`);
 }

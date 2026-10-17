@@ -43,7 +43,7 @@ function createBackup(filePath: string) {
   const backupPath = `${filePath}.aegis.bak`;
   if (!fs.existsSync(backupPath)) {
     fs.copyFileSync(filePath, backupPath);
-    console.log(`\n[Seguridad] Respaldo preventivo creado en: ${path.basename(backupPath)}`);
+    console.log(`\n[Security] Preventive backup created at: ${path.basename(backupPath)}`);
   }
 }
 
@@ -63,7 +63,7 @@ function restoreBackups(dir: string): number {
       const originalPath = fullPath.slice(0, -'.aegis.bak'.length);
       fs.copyFileSync(fullPath, originalPath);
       fs.unlinkSync(fullPath);
-      console.log(`✔ Restaurado a su estado original: ${path.basename(originalPath)}`);
+      console.log(`✔ Restored to original state: ${path.basename(originalPath)}`);
       restored++;
     }
   }
@@ -81,7 +81,7 @@ function readLocalTelemetryFile(sinceTimestamp: number): Map<string, number> | n
   if (!foundPath) return null;
 
   try {
-    const raw = JSON.parse(fs.readFileSync(foundPath, 'utf8')) as Record<
+    const raw = JSON.parse(fs.readFileSync(foundPath, 'utf8').replace(/^\uFEFF/, '')) as Record<
       string,
       { method: string; calls: number; lastSeen: number }
     >;
@@ -91,7 +91,7 @@ function readLocalTelemetryFile(sinceTimestamp: number): Map<string, number> | n
         map.set(hash, info.calls || 1);
       }
     }
-    console.log(`✔ Telemetría leída en Modo Zero-Server Local (${path.basename(foundPath)})`);
+    console.log(`✔ Telemetry loaded in Zero-Server Local Mode (${path.basename(foundPath)})`);
     return map;
   } catch {
     return null;
@@ -120,7 +120,7 @@ async function fetchIngestedHashes(days?: number): Promise<Map<string, number>> 
     });
 
     if (!res.ok) {
-      throw new Error(`Error en servidor (${res.status}): ${await res.text()}`);
+      throw new Error(`Server error (${res.status}):${await res.text()}`);
     }
 
     const data = await res.json() as { hashes: Array<string | { hash: string; calls: number }> };
@@ -137,13 +137,13 @@ async function fetchIngestedHashes(days?: number): Promise<Map<string, number>> 
     }
     return hashMetrics;
   } catch (err: any) {
-    // Fallback automático al archivo local Zero-Server si la API no está corriendo
+    // Automatic fallback to Zero-Server local file if Ingestion API is unreachable
     const localMap = readLocalTelemetryFile(sinceTimestamp);
     if (localMap) {
       return localMap;
     }
 
-    console.error(`[Error] No se pudo conectar con Ingestion API ni se encontró .aegis-local.json (${err.message})`);
+    console.error(`[Error] Could not connect to Ingestion API and no .aegis-local.json file was found (${err.message})`);
     process.exit(1);
   }
 }
@@ -166,60 +166,60 @@ function removeLines(filePath: string, startLine: number, endLine: number) {
 
 async function handleZombieRoute(route: RouteEntry, confidenceLabel: string): Promise<'modified' | 'skipped'> {
   console.log('\n------------------------------------------------------------');
-  console.log(`ALERTA: Código Zombi detectado en ${route.file} (Líneas ${route.startLine}-${route.endLine})`);
-  console.log(`Endpoint  : ${route.method} ${route.fullRoute}`);
-  console.log(`Confianza : ${confidenceLabel}`);
-  console.log('Vista previa del código afectado:');
+  console.log(`ALERT: Zombie Code detected in ${route.file} (Lines ${route.startLine}-${route.endLine})`);
+  console.log(`Endpoint   : ${route.method}${route.fullRoute}`);
+  console.log(`Confidence : ${confidenceLabel}`);
+  console.log('Affected code preview:');
   console.log('------------------------------------------------------------');
   route.codeSnippet.forEach((line, idx) => {
-    console.log(`  ${route.startLine + idx} | ${line}`);
+    console.log(`  ${route.startLine + idx} \vert{}${line}`);
   });
   console.log('------------------------------------------------------------');
 
-  console.log('Opciones disponibles:');
-  console.log('  [c] Comentar el bloque de código (Seguro, reversible)');
-  console.log('  [d] Eliminar el bloque de código');
-  console.log('  [s] Omitir / Mantener sin cambios');
-  console.log('  [q] Cancelar y salir del asistente');
+  console.log('Available actions:');
+  console.log('  [c] Comment out code block (Safe, reversible)');
+  console.log('  [d] Delete code block permanently');
+  console.log('  [s] Skip / Keep unchanged');
+  console.log('  [q] Quit interactive assistant');
 
-  const action = await askQuestion('\n¿Qué acción deseas ejecutar? [c/d/s/q]: ');
+  const action = await askQuestion('\nSelect an action to execute [c/d/s/q]: ');
 
   if (action === 's' || action === '') {
-    console.log('-> Bloque omitido sin modificaciones.');
+    console.log('-> Block skipped without modifications.');
     return 'skipped';
   }
 
   if (action === 'q') {
-    console.log('-> Operación abortada por el usuario.');
+    console.log('-> Operation aborted by user.');
     process.exit(0);
   }
 
   if (action === 'd') {
-    console.log('\n⚠️  ADVERTENCIA DE SEGURIDAD ⚠️');
-    console.log('Estás a punto de eliminar código fuente permanentemente de tu archivo.');
-    const confirmation = await askQuestion('Para confirmar la eliminación, escribe exactamente "ELIMINAR": ');
+    console.log('\n⚠️  SECURITY WARNING ⚠️');
+    console.log('You are about to permanently delete source code lines from your file.');
+    const confirmation = await askQuestion('To confirm permanent deletion, type "DELETE": ');
 
-    if (confirmation !== 'eliminar') {
-      console.log('-> Cancelado. No se realizaron cambios por seguridad.');
+    if (confirmation !== 'delete') {
+      console.log('-> Cancelled. No changes were made for safety.');
       return 'skipped';
     }
 
     createBackup(route.filePath);
     removeLines(route.filePath, route.startLine, route.endLine);
-    console.log(`✔ Bloque eliminado correctamente de ${route.file}.`);
+    console.log(`✔ Code block successfully deleted from ${route.file}.`);
     return 'modified';
   }
 
   if (action === 'c') {
-    const confirmation = await askQuestion('¿Confirmas que deseas comentar este bloque de rutas? [s/n]: ');
-    if (confirmation !== 's') {
-      console.log('-> Cancelado. No se realizaron cambios.');
+    const confirmation = await askQuestion('Confirm commenting out this route block? [y/n]: ');
+    if (confirmation !== 'y' && confirmation !== 'yes') {
+      console.log('-> Cancelled. No changes were made.');
       return 'skipped';
     }
 
     createBackup(route.filePath);
     commentLines(route.filePath, route.startLine, route.endLine);
-    console.log(`✔ Bloque comentado con marcas de auditoría en ${route.file}.`);
+    console.log(`✔ Code block commented out with audit markers in ${route.file}.`);
     return 'modified';
   }
 
@@ -234,13 +234,13 @@ async function main() {
     ? path.resolve(process.cwd(), customDir)
     : path.resolve(__dirname, '../../../apps/test-service/src');
 
-  // Comando rápido de reversión segura (--restore)
+  // Quick safe rollback command (--restore)
   if (args.includes('--restore')) {
     console.log('===================================================================');
-    console.log('           AEGIS-TRACE : RESTAURACIÓN DE RESPALDOS (.bak)          ');
+    console.log('           AEGIS-TRACE : BACKUP RESTORATION (.aegis.bak)           ');
     console.log('===================================================================');
     const count = restoreBackups(targetPath);
-    console.log(`\nTotal de archivos restaurados: ${count}\n`);
+    console.log(`\nTotal files restored: ${count}\n`);
     return;
   }
 
@@ -253,19 +253,19 @@ async function main() {
   const failOnZombies = args.includes('--fail-on-zombies');
 
   console.log('===================================================================');
-  console.log('            AEGIS-TRACE : AUDITOR DE CÓDIGO MUERTO                 ');
+  console.log('           AEGIS-TRACE : ZERO-KNOWLEDGE DEAD-CODE AUDITOR          ');
   console.log('===================================================================');
-  console.log(`Modo de ejecución: ${isPruneMode ? 'INTERACTIVO (--prune)' : 'SÓLO LECTURA (--dry-run)'}`);
+  console.log(`Execution Mode   : ${isPruneMode ? 'INTERACTIVE (--prune)' : 'READ-ONLY (--dry-run)'}`);
   if (days) {
-    console.log(`Ventana temporal : Últimos ${days} día(s)`);
+    console.log(`Time Window      : Last ${days} day(s)`);
   }
-  console.log('Sincronizando telemetría criptográfica con SQLite...');
+  console.log('Synchronizing cryptographic telemetry with SQLite...');
 
   const activeHashMap = await fetchIngestedHashes(days);
   const totalObservedCalls = Array.from(activeHashMap.values()).reduce((acc, v) => acc + v, 0);
 
-  console.log(`✔ Hashes activos consultados desde la API: ${activeHashMap.size} (${totalObservedCalls} llamadas totales)`);
-  console.log(`Directorio objetivo: ${targetPath}\n`);
+  console.log(`✔ Active hashes retrieved from API: ${activeHashMap.size} (${totalObservedCalls} total calls)`);
+  console.log(`Target Directory : ${targetPath}\n`);
 
   const analyzer = new BlindAnalyzer(CLIENT_SECRET);
   const files = analyzer.scanDirectory(targetPath);
@@ -278,48 +278,48 @@ async function main() {
 
   const totalRoutes = declaredRoutes.length;
   if (totalRoutes === 0) {
-    console.log('No se encontraron rutas declaradas para auditar (o todas ya fueron comentadas).');
+    console.log('No declared routes found to audit (or all routes are already commented out).');
     return;
   }
 
   const activeRoutes = declaredRoutes.filter(r => activeHashMap.has(r.hash));
   const zombieRoutes = declaredRoutes.filter(r => !activeHashMap.has(r.hash));
 
-  // Detectar Shadow Endpoints (Tráfico recibido en la API que no corresponde a ninguna ruta estática declarada)
+  // Detect Shadow Endpoints (Traffic observed in runtime that does not match any static AST route)
   const declaredHashSet = new Set(declaredRoutes.map(r => r.hash));
   const shadowHashesCount = Array.from(activeHashMap.keys()).filter(h => !declaredHashSet.has(h)).length;
 
-  // Calcular nivel de confianza según el volumen de tráfico observado
+  // Calculate statistical confidence level based on observed traffic volume
   const confidenceLabel = totalObservedCalls >= 50
-    ? 'ALTA (Volumen de tráfico representativo)'
+    ? 'HIGH (Representative traffic volume)'
     : totalObservedCalls > 0
-      ? 'MEDIA (Muestra de tráfico moderada)'
-      : 'BAJA (Sin tráfico global registrado aún)';
+      ? 'MEDIUM (Moderate traffic sample)'
+      : 'LOW (No global traffic recorded yet)';
 
-  console.log('--- REPORTE DE AUDITORÍA EN CONSOLA ---');
+  console.log('--- CONSOLE AUDIT REPORT ---');
   for (const route of declaredRoutes) {
     const calls = activeHashMap.get(route.hash) || 0;
     const isAlive = calls > 0;
-    const status = isAlive ? `[ACTIVA: ${calls} hits]`.padEnd(18) : '[ZOMBI: 0 hits]   ';
-    console.log(`${status} ${route.method.padEnd(6)} ${route.fullRoute.padEnd(26)} -> ${route.file}:${route.startLine}`);
+    const status = isAlive ? `[ACTIVE: ${calls} hits]`.padEnd(18) : '[ZOMBIE: 0 hits]  ';
+    console.log(`${status} ${route.method.padEnd(6)}${route.fullRoute.padEnd(26)} -> ${route.file}:${route.startLine} (Lines ${route.startLine}-${route.endLine})`);
   }
 
   const reductionPct = totalRoutes > 0 
     ? Number(((zombieRoutes.length / totalRoutes) * 100).toFixed(1))
     : 0;
 
-  console.log('\n--- MÉTRICAS DE SUPERFICIE DE ATAQUE ---');
-  console.log(`Total de endpoints declarados : ${totalRoutes}`);
-  console.log(`Endpoints activos con tráfico : ${activeRoutes.length}`);
-  console.log(`Endpoints inactivos (zombi)   : ${zombieRoutes.length}`);
-  console.log(`Shadow Endpoints detectados   : ${shadowHashesCount}`);
-  console.log(`Nivel de confianza de poda    : ${confidenceLabel}`);
-  console.log(`Reducción potencial de ataque : ${reductionPct}%\n`);
+  console.log('\n--- ATTACK SURFACE METRICS ---');
+  console.log(`Total declared endpoints   : ${totalRoutes}`);
+  console.log(`Active endpoints (traffic) : ${activeRoutes.length}`);
+  console.log(`Inactive endpoints (zombie): ${zombieRoutes.length}`);
+  console.log(`Shadow Endpoints detected  : ${shadowHashesCount}`);
+  console.log(`Pruning confidence level   : ${confidenceLabel}`);
+  console.log(`Attack surface reduction   : ${reductionPct}%\n`);
 
-const reportPayload: AuditReportData = {
+  const reportPayload: AuditReportData = {
     metadata: {
       tool: 'AegisTrace CLI',
-      version: '1.0.0',
+      version: '1.0.1',
       generatedAt: new Date().toISOString(),
       targetDirectory: targetPath,
       apiKey: API_KEY,
@@ -361,9 +361,9 @@ const reportPayload: AuditReportData = {
 
   if (isDryRun && !isPruneMode) {
     if (zombieRoutes.length > 0) {
-      console.log('ℹ Comandos de acción rápida disponibles:');
-      console.log('  • Limpieza interactiva : aegis-trace --prune');
-      console.log('  • Revertir respaldos   : aegis-trace --restore\n');
+      console.log('ℹ Quick action commands available:');
+      console.log('  • Interactive pruning : aegis-trace --prune');
+      console.log('  • Restore backups     : aegis-trace --restore\n');
       if (failOnZombies) {
         process.exit(1);
       }
@@ -371,7 +371,7 @@ const reportPayload: AuditReportData = {
     return;
   }
 
-  // Agrupar por archivo y ordenar de mayor a menor línea para no desplazar índices
+  // Group by file and sort descending by line number to avoid shifting line indices
   const sortedZombies = [...zombieRoutes].sort((a, b) => {
     const fileCompare = a.filePath.localeCompare(b.filePath);
     if (fileCompare !== 0) return fileCompare;
@@ -385,8 +385,8 @@ const reportPayload: AuditReportData = {
   }
 
   console.log('\n===================================================================');
-  console.log(`Auditoría finalizada. Rutas intervenidas con éxito: ${mitigatedCount}`);
-  console.log('Para deshacer todos los cambios en cualquier momento: aegis-trace --restore');
+  console.log(`Audit complete. Successfully mitigated routes: ${mitigatedCount}`);
+  console.log('To undo all changes at any time, run: aegis-trace --restore');
   console.log('===================================================================\n');
 }
 
