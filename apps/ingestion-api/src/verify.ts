@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 
 export interface VerificationResult {
   isValid: boolean;
@@ -18,22 +18,26 @@ export function verifyAegisSignature(
   const timestamp = parseInt(timestampHeader, 10);
   const now = Date.now();
 
-  // Descartar paquetes con desfase mayor a 5 minutos (anti-replay attack)
+  // Descartar paquetes con desfase mayor a 5 minutos (mitigación de replay attacks)
   if (isNaN(timestamp) || Math.abs(now - timestamp) > 5 * 60 * 1000) {
     return { isValid: false, error: 'Marca de tiempo fuera del rango permitido' };
   }
 
-  // Recalcular la firma esperada
+  // Recalcular la firma esperada con el mismo formato canónico que emite el SDK
   const dataToSign = `${timestamp}.${rawBody}`;
   const expectedSignature = createHmac('sha256', clientSecret)
     .update(dataToSign)
     .digest('hex');
 
-  // Comparación en tiempo constante para mitigar timing attacks
+  // Asegurar que ambas firmas tengan la misma longitud antes de timingSafeEqual
   const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
-  const receivedBuffer = Buffer.from(signatureHeader, 'utf8');
+  const receivedBuffer = Buffer.from(signatureHeader.trim(), 'utf8');
 
-  if (expectedBuffer.length !== receivedBuffer.length || !timingSafeEqual(expectedBuffer, receivedBuffer)) {
+  if (expectedBuffer.length !== receivedBuffer.length) {
+    return { isValid: false, error: 'Firma criptografica invalida' };
+  }
+
+  if (!timingSafeEqual(expectedBuffer, receivedBuffer)) {
     return { isValid: false, error: 'Firma criptografica invalida' };
   }
 

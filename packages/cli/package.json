@@ -1,18 +1,38 @@
 {
   "name": "@aegistrace/cli",
   "version": "1.0.0",
-  "description": "Zero-Knowledge dead code & attack surface auditor CLI",
+  "description": "Zero-Knowledge dead-code & API attack surface auditor CLI",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
-    "aegis-trace": "./dist/index.js"
+    "aegis-trace": "./dist/index.js",
+    "aegistrace": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
-    "scan": "tsx src/index.ts"
+    "scan": "tsx src/index.ts",
+    "prepublishOnly": "npm run build"
   },
-  "keywords": ["security", "zero-knowledge", "telemetry", "dead-code", "audit"],
-  "author": "",
-  "license": "ISC",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "security",
+    "zero-knowledge",
+    "telemetry",
+    "dead-code",
+    "audit",
+    "ast",
+    "attack-surface"
+  ],
+  "author": "Ezequiel Canales",
+  "license": "MIT",
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",

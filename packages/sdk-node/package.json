@@ -1,24 +1,39 @@
 {
   "name": "@aegistrace/node-sdk",
-  "version": "0.1.0",
-  "description": "Zero-Knowledge blind telemetry and dead-weight code pruner",
+  "version": "1.0.0",
+  "description": "Zero-Knowledge blind telemetry middleware for Node.js & Express APIs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "express": "^4.0.0 || ^5.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "keywords": [
     "telemetry",
     "security",
     "dead-code",
+    "zero-knowledge",
+    "express",
     "aegistrace"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "Ezequiel Canales",
+  "license": "MIT",
   "devDependencies": {
     "@types/express": "^5.0.6",
-    "@types/node": "^26.6.4",
+    "@types/node": "^22.0.0",
     "express": "^5.2.1",
-    "typescript": "^7.0.2"
+    "typescript": "^5.5.0"
   }
 }

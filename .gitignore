@@ -1,27 +1,35 @@
 # Dependencias y compilación
 node_modules/
 dist/
+build/
+*.tgz
 
 # Variables de entorno y secretos
 .env
 .env.*
 !.env.example
 
-# Respaldos generados por herramientas (AegisTrace)
+# Respaldos preventivos y telemetría local (AegisTrace)
 *.bak
 *.aegis.bak
+.aegis-local.json
 
-# Base de datos SQLite local y temporales
+# Base de datos SQLite local y archivos temporales WAL
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite-journal
-apps/ingestion-api/aegis.db
-apps/ingestion-api/aegis.db-journal
+apps/ingestion-api/aegis.db*
 
 # Reportes generados localmente
 SECURITY_AUDIT.md
 packages/cli/SECURITY_AUDIT.md
+audit-report.md
+audit-report.json
+packages/cli/audit-report.md
+packages/cli/audit-report.json
 
 # Logs y SO
 npm-debug.log*

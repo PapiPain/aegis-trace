@@ -1,0 +1,15 @@
+{
+  "name": "aegis-trace-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=@aegistrace/node-sdk && npm run build --workspace=@aegistrace/cli",
+    "audit": "node packages/cli/dist/index.js --dir=apps/test-service/src",
+    "prune": "node packages/cli/dist/index.js --dir=apps/test-service/src --prune",
+    "restore": "node packages/cli/dist/index.js --dir=apps/test-service/src --restore"
+  }
+}
