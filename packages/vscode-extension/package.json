@@ -1,0 +1,81 @@
+{
+  "name": "aegis-trace-vscode",
+  "displayName": "AegisTrace - API Dead-Code & OWASP Attack Surface Auditor",
+  "description": "Zero-Knowledge AST + Runtime Telemetry Auditor for Node.js & Express. Detect and prune zombie & unauthenticated API routes directly in VS Code.",
+  "version": "1.3.1",
+  "publisher": "aegis-trace",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PapiPain/aegis-trace.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "express",
+    "nodejs",
+    "security",
+    "dead-code",
+    "owasp",
+    "api",
+    "ast",
+    "devsecops"
+  ],
+  "activationEvents": [
+    "onLanguage:typescript",
+    "onLanguage:javascript"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aegisTrace.scanWorkspace",
+        "title": "AegisTrace: Audit Workspace for Zombie Routes"
+      },
+      {
+        "command": "aegisTrace.pruneRoute",
+        "title": "AegisTrace: Safe Comment Out Zombie Route"
+      },
+      {
+        "command": "aegisTrace.activateCloud",
+        "title": "AegisTrace: Configure Cloud API Key / Start 7-Day Trial"
+      }
+    ],
+    "configuration": {
+      "title": "AegisTrace SecOps",
+      "properties": {
+        "aegisTrace.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "AegisTrace Cloud API Key (Pro $49/mo, Team $149/mo, Business $399/mo)."
+        },
+        "aegisTrace.secretKey": {
+          "type": "string",
+          "default": "sec_secretkey_test987",
+          "description": "Zero-Knowledge HMAC-SHA256 Secret Key used to hash routes locally."
+        },
+        "aegisTrace.cloudUrl": {
+          "type": "string",
+          "default": "http://localhost:4000/v1/telemetry/hashes",
+          "description": "AegisTrace Cloud or self-hosted telemetry endpoint."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "npx --yes @vscode/vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  }
+}
