@@ -64,7 +64,7 @@ function restoreBackups(dir: string): number {
       const originalPath = fullPath.slice(0, -'.aegis.bak'.length);
       fs.copyFileSync(fullPath, originalPath);
       fs.unlinkSync(fullPath);
-      console.log(`✔ Restored to original state: ${path.basename(originalPath)}`);
+      console.log(`âœ” Restored to original state: ${path.basename(originalPath)}`);
       restored++;
     }
   }
@@ -92,7 +92,7 @@ function readLocalTelemetryFile(sinceTimestamp: number): Map<string, number> | n
         map.set(hash, info.calls || 1);
       }
     }
-    console.log(`✔ Telemetry loaded in Zero-Server Local Mode (${path.basename(foundPath)})`);
+    console.log(`âœ” Telemetry loaded in Zero-Server Local Mode (${path.basename(foundPath)})`);
     return map;
   } catch {
     return null;
@@ -174,7 +174,7 @@ function computeRiskLevel(isAlive: boolean, isAuthenticated: boolean): 'CRITICAL
 async function handleZombieRoute(route: RouteEntry, confidenceLabel: string): Promise<'modified' | 'skipped'> {
   const authBanner = route.isAuthenticated
     ? `PROTECTED (${route.authMiddlewares.join(', ')})`
-    : '🚨 CRITICAL: UNAUTHENTICATED PUBLIC ENDPOINT';
+    : 'ðŸš¨ CRITICAL: UNAUTHENTICATED PUBLIC ENDPOINT';
 
   console.log('\n------------------------------------------------------------');
   console.log(`ALERT: Zombie Code detected in ${route.file} (Lines ${route.startLine}-${route.endLine})`);
@@ -207,7 +207,7 @@ async function handleZombieRoute(route: RouteEntry, confidenceLabel: string): Pr
   }
 
   if (action === 'd') {
-    console.log('\n⚠️  SECURITY WARNING ⚠️');
+    console.log('\nâš ï¸  SECURITY WARNING âš ï¸');
     console.log('You are about to permanently delete source code lines from your file.');
     const confirmation = await askQuestion('To confirm permanent deletion, type "DELETE": ');
 
@@ -218,7 +218,7 @@ async function handleZombieRoute(route: RouteEntry, confidenceLabel: string): Pr
 
     createBackup(route.filePath);
     removeLines(route.filePath, route.startLine, route.endLine);
-    console.log(`✔ Code block successfully deleted from ${route.file}.`);
+    console.log(`âœ” Code block successfully deleted from ${route.file}.`);
     return 'modified';
   }
 
@@ -231,7 +231,7 @@ async function handleZombieRoute(route: RouteEntry, confidenceLabel: string): Pr
 
     createBackup(route.filePath);
     commentLines(route.filePath, route.startLine, route.endLine);
-    console.log(`✔ Code block commented out with audit markers in ${route.file}.`);
+    console.log(`âœ” Code block commented out with audit markers in ${route.file}.`);
     return 'modified';
   }
 
@@ -275,7 +275,7 @@ async function main() {
   const activeHashMap = await fetchIngestedHashes(days);
   const totalObservedCalls = Array.from(activeHashMap.values()).reduce((acc, v) => acc + v, 0);
 
-  console.log(`✔ Active hashes retrieved: ${activeHashMap.size} (${totalObservedCalls} total calls)`);
+  console.log(`âœ” Active hashes retrieved: ${activeHashMap.size} (${totalObservedCalls} total calls)`);
   console.log(`Target Directory : ${targetPath}\n`);
 
   const analyzer = new BlindAnalyzer(CLIENT_SECRET);
@@ -312,8 +312,8 @@ async function main() {
     const isAlive = calls > 0;
     const status = isAlive ? `[ACTIVE: ${calls} hits]`.padEnd(18) : '[ZOMBIE: 0 hits]  ';
     const authTag = route.isAuthenticated
-      ? `[🔒 AUTH]`.padEnd(11)
-      : (isAlive ? `[🔓 PUBLIC]` : `[🚨 NO-AUTH]`);
+      ? `[ðŸ”’ AUTH]`.padEnd(11)
+      : (isAlive ? `[ðŸ”“ PUBLIC]` : `[ðŸš¨ NO-AUTH]`);
     console.log(`${status} ${authTag} ${route.method.padEnd(6)} ${route.fullRoute.padEnd(26)} -> ${route.file}:${route.startLine}`);
   }
 
@@ -333,7 +333,7 @@ async function main() {
   const reportPayload: AuditReportData = {
     metadata: {
       tool: 'AegisTrace CLI',
-      version: '1.1.0',
+      version: '1.3.0',
       generatedAt: new Date().toISOString(),
       targetDirectory: targetPath,
       apiKey: API_KEY,
@@ -379,9 +379,9 @@ async function main() {
 
   if (isDryRun && !isPruneMode) {
     if (zombieRoutes.length > 0) {
-      console.log('ℹ Quick action commands available:');
-      console.log('  • Interactive pruning : aegis-trace --prune');
-      console.log('  • Restore backups     : aegis-trace --restore\n');
+      console.log('â„¹ Quick action commands available:');
+      console.log('  â€¢ Interactive pruning : aegis-trace --prune');
+      console.log('  â€¢ Restore backups     : aegis-trace --restore\n');
       if (failOnZombies) {
         process.exit(1);
       }
