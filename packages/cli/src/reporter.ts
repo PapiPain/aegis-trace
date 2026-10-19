@@ -1,189 +1,128 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import { AnalyzedRoute, RetirementState } from './analyzer';
 
-export interface EndpointReportItem {
-  method: string;
-  route: string;
-  file: string;
-  fullPath: string;
-  startLine: number;
-  endLine: number;
-  blindHash: string;
-  status: 'ACTIVE' | 'ZOMBIE';
-  isAuthenticated: boolean;
-  authMiddlewares: string[];
-  riskLevel: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
-  callCountObserved: number;
-  codeSnippet: string[];
+export interface TelemetryContext {
+  environment: string;
+  observationDays: number;
+  minRequiredDays: number;
+  observationStartedAt: string | null;
 }
 
-export interface AuditReportData {
-  metadata: {
-    tool: string;
-    version: string;
-    generatedAt: string;
-    targetDirectory: string;
-    apiKey: string;
-    observationDays?: number;
-  };
-  summary: {
-    totalDeclaredEndpoints: number;
-    activeEndpoints: number;
-    zombieEndpoints: number;
-    unauthenticatedZombieEndpoints: number;
-    shadowEndpoints?: number;
-    totalObservedCalls?: number;
-    confidenceLabel?: string;
-    attackSurfaceReductionPercentage: number;
-  };
-  endpoints: EndpointReportItem[];
+export interface EvaluatedRoute extends AnalyzedRoute {
+  hits: number;
+  state: RetirementState;
+  confidenceLabel: string;
+  canAutoPrune: boolean;
 }
 
-export function generateJsonReport(data: AuditReportData, outputPath: string): void {
-  const resolvedPath = path.resolve(process.cwd(), outputPath);
-  fs.writeFileSync(resolvedPath, JSON.stringify(data, null, 2), 'utf8');
-  console.log(`✔ JSON report saved at: ${resolvedPath}`);
-}
+export function evaluateRoutesWithEvidence(
+  routes: AnalyzedRoute[],
+  telemetryMap: Map<string, number>,
+  ctx: TelemetryContext
+): EvaluatedRoute[] {
+  const isSufficientWindow = ctx.observationDays >= ctx.minRequiredDays && ctx.environment === 'production';
 
-export function generateMarkdownReport(data: AuditReportData, outputPath: string): void {
-  const resolvedPath = path.resolve(process.cwd(), outputPath);
-  const { metadata, summary, endpoints } = data;
+  return routes.map(r => {
+    const hits = telemetryMap.get(r.hash) || 0;
 
-  const shadowCount = summary.shadowEndpoints ?? 0;
-  const totalCalls = summary.totalObservedCalls ?? 0;
-  const confidence = summary.confidenceLabel ?? 'MEDIUM (Moderate traffic sample)';
-  const windowText = metadata.observationDays
-    ? `Last ${metadata.observationDays} day(s)`
-    : 'Full history';
-
-  const zombieList = endpoints.filter(e => e.status === 'ZOMBIE');
-  const criticalZombies = zombieList.filter(e => !e.isAuthenticated);
-
-  const lines: string[] = [
-    '# 🛡️ AegisTrace — Dead-Code & Attack Surface Audit Report',
-    '',
-    `> **Generated:** \`${metadata.generatedAt}\` | **Version:** \`v${metadata.version}\` | **Window:** \`${windowText}\``,
-    `> **Audited Directory:** \`${metadata.targetDirectory}\``,
-    `> **Compliance Mapping:** \`OWASP API9:2023 (Improper Inventory Management)\` · \`SOC2 CC6.1 (Attack Surface Reduction)\``,
-    '',
-    '---',
-    '',
-    '## 📊 Executive Attack Surface & Telemetry Summary',
-    '',
-    '| Security Metric | Value |',
-    '| :--- | :--- |',
-    `| **Total Declared Endpoints (AST)** | \`${summary.totalDeclaredEndpoints}\` |`,
-    `| **Active Endpoints (With Traffic)** | \`${summary.activeEndpoints}\` (${totalCalls} total invocations) |`,
-    `| **Inactive Endpoints (Zombie Code)** | \`${summary.zombieEndpoints}\` |`,
-    `| **🚨 Unauthenticated Zombie Endpoints (CRITICAL)** | **\`${summary.unauthenticatedZombieEndpoints}\`** |`,
-    `| **Shadow Endpoints (Undeclared Traffic)** | \`${shadowCount}\` |`,
-    `| **Pruning Confidence Level** | **${confidence}** |`,
-    `| **Potential Attack Surface Reduction** | **${summary.attackSurfaceReductionPercentage}%** |`,
-    ''
-  ];
-
-  if (criticalZombies.length > 0) {
-    lines.push(
-      '### 🚨 CRITICAL SECURITY ALERT: Unauthenticated Zombie Endpoints Detected',
-      `AegisTrace AST inspection identified **${criticalZombies.length} dormant endpoint(s)** with **0 production hits** that lack authentication middleware (\`JWT\`, \`Session\`, \`AuthGuard\`). Dormant unauthenticated routes are the #1 vector for **OWASP API9:2023** breaches and should be pruned or protected immediately.`,
-      ''
-    );
-  }
-
-  if (shadowCount > 0) {
-    lines.push(
-      '### ⚠️ Security Alert: Shadow Endpoints Detected',
-      `Detected **${shadowCount} active telemetry hash(es)** in runtime that do not match any statically declared route in the analyzed codebase. This may be caused by dynamic middleware, hidden legacy routes, or unnormalized requests.`,
-      ''
-    );
-  }
-
-  lines.push(
-    '---',
-    '',
-    '## 🗺️ Complete Endpoint Inventory & Auth Posture',
-    '',
-    '| Status | Hits | Method | Normalized Route | Auth Guard | Location | Risk Level | Blind Hash |',
-    '| :--- | :---: | :---: | :--- | :---: | :--- | :--- | :--- |'
-  );
-
-  for (const ep of endpoints) {
-    const statusBadge = ep.status === 'ACTIVE' ? '🟢 `ACTIVE`' : '🔴 `ZOMBIE`';
-    const authBadge = ep.isAuthenticated
-      ? `🔒 \`${ep.authMiddlewares.join(', ')}\``
-      : '🔓 `NONE (Public)`';
-
-    let riskBadge = '✅ Low (Active)';
-    if (ep.riskLevel === 'CRITICAL') {
-      riskBadge = '🚨 **CRITICAL (Unauth Zombie)**';
-    } else if (ep.riskLevel === 'HIGH') {
-      riskBadge = '🔥 **HIGH (Protected Zombie)**';
-    } else if (ep.riskLevel === 'MEDIUM') {
-      riskBadge = '⚠️ **MEDIUM (Public Active)**';
+    if (hits > 0) {
+      return {
+        ...r,
+        hits,
+        state: 'ACTIVE',
+        confidenceLabel: 'Observed in runtime (' + hits + ' hits)',
+        canAutoPrune: false
+      };
     }
 
-    const shortHash = `${ep.blindHash.slice(0, 10)}...`;
-
-    lines.push(
-      `| ${statusBadge} | \`${ep.callCountObserved}\` | **${ep.method}** | \`${ep.route}\` | ${authBadge} | \`${ep.file}:${ep.startLine}-${ep.endLine}\` | ${riskBadge} | \`${shortHash}\` |`
-    );
-  }
-
-  lines.push('', '---', '');
-
-  if (zombieList.length > 0) {
-    lines.push(
-      '## 🧟 Zombie Code Candidates for Pruning (Unused Lines)',
-      '',
-      'The following code blocks registered zero legitimate runtime traffic during the observation period and represent unnecessary attack surface:',
-      ''
-    );
-
-    for (const z of zombieList) {
-      const authStatusText = z.isAuthenticated
-        ? `🔒 Protected by \`${z.authMiddlewares.join(', ')}\``
-        : `🚨 **UNAUTHENTICATED (Publicly Exposed)**`;
-
-      lines.push(
-        `### 🔴 \`${z.method}${z.route}\` — \`${z.file}\` (Lines ${z.startLine}–${z.endLine}) · ${authStatusText}`,
-        '',
-        '```typescript',
-        ...z.codeSnippet.map((line, idx) => `${String(z.startLine + idx).padStart(4, ' ')} | ${line}`),
-        '```',
-        ''
-      );
+    if (r.isKeepExempt) {
+      return {
+        ...r,
+        hits: 0,
+        state: 'EXEMPT_KEEP',
+        confidenceLabel: 'Protected by @stelfid-keep (' + (r.keepReason || 'intentional') + ')',
+        canAutoPrune: false
+      };
     }
 
-    lines.push(
-      '---',
-      '',
-      '## 🛠️ Safe Mitigation Guide (Non-Destructive)',
-      '',
-      '1. **Interactive Cleanup with Automatic Backup (`.aegis.bak`):**',
-      '   ```bash',
-      '   npx @aegis-trace/cli --prune',
-      '   ```',
-      '2. **Instant Rollback (1-Click Restore):**',
-      '   If you need to restore all modified files back to their exact original state:',
-      '   ```bash',
-      '   npx @aegis-trace/cli --restore',
-      '   ```',
-      ''
-    );
-  } else {
-    lines.push(
-      '## ✅ Optimal Attack Surface',
-      '',
-      'No zombie endpoints were detected in this scan. All declared routes show verified runtime activity.',
-      ''
-    );
+    if (!isSufficientWindow) {
+      const reason = ctx.environment !== 'production'
+        ? 'Env: ' + ctx.environment + ' (' + ctx.observationDays.toFixed(1) + 'd observed)'
+        : 'Short window: ' + ctx.observationDays.toFixed(1) + 'd / ' + ctx.minRequiredDays + 'd required';
+      return {
+        ...r,
+        hits: 0,
+        state: 'UNOBSERVED_LOW_CONFIDENCE',
+        confidenceLabel: 'Unobserved [Low Retirement Confidence — ' + reason + ']',
+        canAutoPrune: false
+      };
+    }
+
+    if (r.isAuthenticated) {
+      return {
+        ...r,
+        hits: 0,
+        state: 'CANDIDATE_PROTECTED',
+        confidenceLabel: 'Retirement Candidate [High Confidence · Auth: ' + r.authMiddlewares.join(',') + ']',
+        canAutoPrune: true
+      };
+    }
+
+    return {
+      ...r,
+      hits: 0,
+      state: 'CANDIDATE_UNAUTHENTICATED',
+      confidenceLabel: 'CRITICAL Unauthenticated Retirement Candidate [OWASP API9:2023]',
+      canAutoPrune: true
+    };
+  });
+}
+
+export function printEvidenceReport(evaluated: EvaluatedRoute[], ctx: TelemetryContext): void {
+  console.log('\n================================================================================');
+  console.log(' 🏛️  MAIESTOR STELFID — API Route Evidence & Retirement Auditor (v1.4.0)');
+  console.log('     "Guiding API surface retirement with verifiable runtime evidence"');
+  console.log('================================================================================');
+  console.log(
+    ' Telemetry Context : Env=' + ctx.environment.toUpperCase() +
+    ' | Observed=' + ctx.observationDays.toFixed(1) + ' days' +
+    ' (Min threshold for safe retirement: ' + ctx.minRequiredDays + ' days)'
+  );
+  console.log('--------------------------------------------------------------------------------\n');
+
+  for (const r of evaluated) {
+    const authTag = r.isAuthenticated ? '🔒 Auth (' + r.authMiddlewares.join(',') + ')' : '🔓 Public (No Auth)';
+    const testTag = r.referencedInTests ? ' | 🧪 Referenced in Tests' : '';
+
+    if (r.state === 'ACTIVE') {
+      console.log(' 🟢 [ACTIVE]      ' + r.method.padEnd(6) + ' ' + r.fullRoute.padEnd(32) + ' -> ' + r.hits + ' hits | ' + authTag);
+    } else if (r.state === 'EXEMPT_KEEP') {
+      console.log(' 📌 [KEEP/EXEMPT] ' + r.method.padEnd(6) + ' ' + r.fullRoute.padEnd(32) + ' -> Exempt: ' + r.keepReason);
+    } else if (r.state === 'UNOBSERVED_LOW_CONFIDENCE') {
+      const riskNote = r.isAuthenticated ? authTag : '⚠️ Unauthenticated (Review OWASP API9)';
+      console.log(' 🟡 [UNOBSERVED]  ' + r.method.padEnd(6) + ' ' + r.fullRoute.padEnd(32) + ' -> 0 hits | ' + riskNote + testTag);
+      console.log('    └─ Evidence   : ' + r.confidenceLabel + ' (Line ' + r.line + ')');
+    } else if (r.state === 'CANDIDATE_PROTECTED') {
+      console.log(' 🔴 [CANDIDATE]   ' + r.method.padEnd(6) + ' ' + r.fullRoute.padEnd(32) + ' -> 0 hits | ' + authTag + testTag);
+      console.log('    └─ Evidence   : ' + r.confidenceLabel + ' (Line ' + r.line + ')');
+    } else {
+      console.log(' 🚨 [CRITICAL]    ' + r.method.padEnd(6) + ' ' + r.fullRoute.padEnd(32) + ' -> 0 hits | ' + authTag + testTag);
+      console.log('    └─ Evidence   : ' + r.confidenceLabel + ' (Line ' + r.line + ')');
+    }
   }
 
-  lines.push(
-    '---',
-    '*Audited with Zero-Knowledge Blind Indexing by **AegisTrace SecOps CLI**.*'
-  );
+  const activeCount = evaluated.filter(r => r.state === 'ACTIVE').length;
+  const exemptCount = evaluated.filter(r => r.state === 'EXEMPT_KEEP').length;
+  const unobservedCount = evaluated.filter(r => r.state === 'UNOBSERVED_LOW_CONFIDENCE').length;
+  const candidateCount = evaluated.filter(r => r.state === 'CANDIDATE_PROTECTED' || r.state === 'CANDIDATE_UNAUTHENTICATED').length;
+  const unauthZeroHits = evaluated.filter(r => r.hits === 0 && !r.isAuthenticated && !r.isKeepExempt).length;
 
-  fs.writeFileSync(resolvedPath, lines.join('\n'), 'utf8');
-  console.log(`✔ Markdown report saved at: ${resolvedPath}`);
+  console.log('\n--------------------------------------------------------------------------------');
+  console.log(' 📊 EVIDENCE SUMMARY:');
+  console.log('    • Total Endpoints Scanned         : ' + evaluated.length);
+  console.log('    • 🟢 Active in Runtime            : ' + activeCount);
+  console.log('    • 📌 Intentional / Exempt (@keep) : ' + exemptCount);
+  console.log('    • 🟡 Unobserved (Needs More Data) : ' + unobservedCount);
+  console.log('    • 🔴 Verified Retirement Ready    : ' + candidateCount);
+  console.log('    • 🚨 Unauthenticated w/ 0 Hits    : ' + unauthZeroHits);
+  console.log('================================================================================\n');
 }

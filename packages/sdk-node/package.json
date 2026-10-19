@@ -1,7 +1,7 @@
 {
   "name": "@aegis-trace/node-sdk",
-  "version": "1.3.1",
-  "description": "Zero-Knowledge blind telemetry middleware for Node.js & Express APIs",
+  "version": "1.4.0",
+  "description": "Maiestor Stelfid — Zero-Knowledge blind runtime telemetry SDK for API route retirement evidence.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [

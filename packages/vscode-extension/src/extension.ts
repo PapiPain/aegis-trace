@@ -12,6 +12,8 @@ interface ScannedRoute {
   hash: string;
   isAuthenticated: boolean;
   authMiddlewares: string[];
+  isKeepExempt: boolean;
+  keepReason: string | null;
   hits: number;
 }
 
@@ -19,8 +21,9 @@ const AUTH_KEYWORD_REGEX = /(?:auth|jwt|token|guard|protect|session|admin|role|p
 
 const IGNORED_IDENTIFIERS = new Set([
   'req', 'res', 'next', 'async', 'await', 'err', 'request', 'response', 'app', 'router',
-  'aegisTrace', 'aegisTraceMiddleware', 'apiKey', 'secretKey', 'express', 'json', 'urlencoded',
-  'cors', 'helmet', 'morgan', 'compression', 'cookieParser', 'rateLimit', 'true', 'false', 'null'
+  'aegisTrace', 'aegisTraceMiddleware', 'stelfidTelemetry', 'apiKey', 'secretKey', 'express',
+  'json', 'urlencoded', 'cors', 'helmet', 'morgan', 'compression', 'cookieParser', 'rateLimit',
+  'true', 'false', 'null'
 ]);
 
 function normalizeRoute(routePattern: string): string {
@@ -38,26 +41,42 @@ function hashRoute(method: string, routePattern: string, secretKey: string): str
   return createHmac('sha256', secretKey).update(canonical).digest('hex');
 }
 
-function loadLocalTelemetry(workspaceRoot: string): Map<string, number> {
+function loadLocalTelemetry(workspaceRoot: string): {
+  map: Map<string, number>;
+  env: string;
+  days: number;
+} {
   const candidates = [
+    path.join(workspaceRoot, '.stelfid-local.json'),
     path.join(workspaceRoot, '.aegis-local.json'),
     path.join(workspaceRoot, 'apps', 'test-service', '.aegis-local.json')
   ];
   const map = new Map<string, number>();
+  let env = 'local';
+  let days = 0;
+
   const found = candidates.find(p => fs.existsSync(p));
   if (!found) {
-    return map;
+    return { map, env, days };
   }
 
   try {
     const raw = JSON.parse(fs.readFileSync(found, 'utf8').replace(/^\uFEFF/, ''));
-    for (const [hash, info] of Object.entries(raw as Record<string, any>)) {
+    if (raw._meta) {
+      env = raw._meta.environment || 'local';
+      if (raw._meta.observationStartedAt) {
+        days = Math.max(0, (Date.now() - new Date(raw._meta.observationStartedAt).getTime()) / 86400000);
+      }
+    }
+    const entries = raw.routes || raw;
+    for (const [hash, info] of Object.entries(entries as Record<string, any>)) {
+      if (hash === '_meta') continue;
       map.set(hash, Number(info && info.calls ? info.calls : 1));
     }
   } catch {
     // Ignore parse error
   }
-  return map;
+  return { map, env, days };
 }
 
 function parseDocumentRoutes(doc: vscode.TextDocument, secretKey: string, telemetry: Map<string, number>): ScannedRoute[] {
@@ -65,11 +84,11 @@ function parseDocumentRoutes(doc: vscode.TextDocument, secretKey: string, teleme
   const lines = content.split(/\r?\n/);
   const routes: ScannedRoute[] = [];
 
-  const prefixCommentMatch = content.match(/\/\/\s*@aegis-prefix\s+([^\s]+)/);
+  const prefixCommentMatch = content.match(/\/\/\s*@(?:stelfid|aegis)-prefix\s+([^\s]+)/i);
   const activePrefix = prefixCommentMatch ? prefixCommentMatch[1].trim() : '';
 
   const globalFileAuth: string[] = [];
-  const globalUseRegex = /\b(?:app|router)\.use\s*\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*(?:\(|,|\))/g;
+  const globalUseRegex = /\b(?:app|router)\.use\s*\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*(?:\(ert{},ert{}\))/g;
   let gMatch: RegExpExecArray | null;
   while ((gMatch = globalUseRegex.exec(content)) !== null) {
     const fnName = gMatch[1];
@@ -87,25 +106,17 @@ function parseDocumentRoutes(doc: vscode.TextDocument, secretKey: string, teleme
     const trimmed = rawLine.trim();
 
     if (inBlockComment) {
-      if (trimmed.includes('*/')) {
-        inBlockComment = false;
-      }
+      if (trimmed.includes('*/')) inBlockComment = false;
       continue;
     }
     if (trimmed.startsWith('/*')) {
-      if (!trimmed.includes('*/')) {
-        inBlockComment = true;
-      }
+      if (!trimmed.includes('*/')) inBlockComment = true;
       continue;
     }
-    if (trimmed.startsWith('//')) {
-      continue;
-    }
+    if (trimmed.startsWith('//')) continue;
 
     const methodMatch = rawLine.match(methodStartRegex);
-    if (!methodMatch) {
-      continue;
-    }
+    if (!methodMatch) continue;
 
     const method = methodMatch[1].toUpperCase();
     const afterParenIndex = (methodMatch.index || 0) + methodMatch[0].length;
@@ -117,13 +128,9 @@ function parseDocumentRoutes(doc: vscode.TextDocument, secretKey: string, teleme
       rawRoute = sameLineRoute[1];
     } else if (i + 1 < lines.length) {
       const nextLineRoute = lines[i + 1].match(stringLiteralRegex);
-      if (nextLineRoute) {
-        rawRoute = nextLineRoute[1];
-      }
+      if (nextLineRoute) rawRoute = nextLineRoute[1];
     }
-    if (!rawRoute) {
-      continue;
-    }
+    if (!rawRoute) continue;
 
     const fullRoute = activePrefix
       ? activePrefix.replace(/\/$/, '') + '/' + rawRoute.replace(/^\//, '')
@@ -141,24 +148,15 @@ function parseDocumentRoutes(doc: vscode.TextDocument, secretKey: string, teleme
       for (let k = 0; k < line.length; k++) {
         const char = line[k];
         const prevChar = k > 0 ? line[k - 1] : '';
-        if (!inString && char === '/' && line[k + 1] === '/') {
-          break;
-        }
+        if (!inString && char === '/' && line[k + 1] === '/') break;
         if ((char === "'" || char === '"' || char === '`') && prevChar !== '\\') {
-          if (!inString) {
-            inString = char;
-          } else if (inString === char) {
-            inString = null;
-          }
+          if (!inString) inString = char;
+          else if (inString === char) inString = null;
           continue;
         }
         if (!inString) {
-          if (char === '(') {
-            openParens++;
-            started = true;
-          } else if (char === ')') {
-            openParens--;
-          }
+          if (char === '(') { openParens++; started = true; }
+          else if (char === ')') { openParens--; }
         }
       }
       if (started && openParens <= 0) {
@@ -167,17 +165,24 @@ function parseDocumentRoutes(doc: vscode.TextDocument, secretKey: string, teleme
       }
     }
 
-    const snippetText = lines.slice(i, endLine + 1).join('\n');
+    const prevLine = i > 0 ? lines[i - 1] : '';
+    const snippetText = prevLine + '\n' + lines.slice(i, endLine + 1).join('\n');
+
+    const keepMatch = snippetText.match(/\/\/\s*@(?:stelfid-keep|keep-route|aegis-keep)(?:\s*[:=]?\s*(.*))?$/im);
+    const isKeepExempt = Boolean(keepMatch);
+    const keepReason = keepMatch ? (keepMatch[1]?.trim() || 'Intentional route') : null;
+
     const detectedAuth = new Set<string>(globalFileAuth);
-    if (/\/\/\s*@aegis-auth/i.test(snippetText)) {
-      detectedAuth.add('@aegis-auth');
+    if (/\/\/\s*@(?:stelfid|aegis)-auth/i.test(snippetText)) {
+      detectedAuth.add('@stelfid-auth');
     }
 
-    const headerMatch = snippetText.match(/\b(?:app|router)\.(?:get|post|put|delete|patch)\s*\(\s*['"`][^'"`]+['"`]\s*,([\s\S]*)/i);
+    const bodySnippet = lines.slice(i, endLine + 1).join('\n');
+    const headerMatch = bodySnippet.match(/\b(?:app|router)\.(?:get|post|put|delete|patch)\s*\(\s*['"`][^'"`]+['"`]\s*,([\s\S]*)/i);
     if (headerMatch) {
       const beforeArrow = headerMatch[1].split('=>')[0] || headerMatch[1];
       const beforeFn = beforeArrow.split(/\bfunction\b/)[0] || beforeArrow;
-      const mwZone = beforeFn.replace(/\(\s*(?:req\vert{}request)\b[^)]*\)\s*$/i, '');
+      const mwZone = beforeFn.replace(/\(\s*(?:req|request)\b[^)]*\)\s*$/i, '');
       const ids = mwZone.match(/\b[a-zA-Z_][a-zA-Z0-9_.]*\b/g) || [];
       for (const id of ids) {
         if (!IGNORED_IDENTIFIERS.has(id) && AUTH_KEYWORD_REGEX.test(id)) {
@@ -196,6 +201,8 @@ function parseDocumentRoutes(doc: vscode.TextDocument, secretKey: string, teleme
       hash,
       isAuthenticated: authList.length > 0,
       authMiddlewares: authList,
+      isKeepExempt,
+      keepReason,
       hits: telemetry.get(hash) || 0
     });
 
@@ -205,7 +212,7 @@ function parseDocumentRoutes(doc: vscode.TextDocument, secretKey: string, teleme
   return routes;
 }
 
-class AegisCodeLensProvider implements vscode.CodeLensProvider {
+class StelfidCodeLensProvider implements vscode.CodeLensProvider {
   private _onDidChangeCodeLenses = new vscode.EventEmitter<void>();
   public readonly onDidChangeCodeLenses = this._onDidChangeCodeLenses.event;
 
@@ -218,10 +225,9 @@ class AegisCodeLensProvider implements vscode.CodeLensProvider {
     const rootPath = workspaceFolder ? workspaceFolder.uri.fsPath : process.cwd();
     const config = vscode.workspace.getConfiguration('aegisTrace');
     const secretKey = config.get<string>('secretKey') || 'sec_secretkey_test987';
-    const apiKey = config.get<string>('apiKey') || '';
 
-    const telemetry = loadLocalTelemetry(rootPath);
-    const routes = parseDocumentRoutes(document, secretKey, telemetry);
+    const { map, env, days } = loadLocalTelemetry(rootPath);
+    const routes = parseDocumentRoutes(document, secretKey, map);
     const lenses: vscode.CodeLens[] = [];
 
     for (const r of routes) {
@@ -230,16 +236,22 @@ class AegisCodeLensProvider implements vscode.CodeLensProvider {
       if (r.hits > 0) {
         const authBadge = r.isAuthenticated ? '[AUTH: ' + r.authMiddlewares.join(',') + ']' : '[PUBLIC]';
         lenses.push(new vscode.CodeLens(range, {
-          title: 'AegisTrace: ACTIVE (' + r.hits + ' hits) ' + authBadge,
+          title: 'Maiestor Stelfid: ACTIVE (' + r.hits + ' hits) ' + authBadge,
+          command: ''
+        }));
+      } else if (r.isKeepExempt) {
+        lenses.push(new vscode.CodeLens(range, {
+          title: 'Maiestor Stelfid: EXEMPT / INTENTIONAL (' + (r.keepReason || 'Keep Route') + ')',
           command: ''
         }));
       } else {
-        const riskTitle = r.isAuthenticated
-          ? 'AegisTrace: ZOMBIE ROUTE (0 hits - Protected by ' + r.authMiddlewares.join(',') + ')'
-          : 'AegisTrace: CRITICAL UNAUTHENTICATED ZOMBIE (0 hits - OWASP API9)';
+        const windowTag = env + ' / ' + days.toFixed(1) + 'd observed';
+        const statusTitle = r.isAuthenticated
+          ? 'Maiestor Stelfid: UNOBSERVED ROUTE (0 hits in ' + windowTag + ' - Auth: ' + r.authMiddlewares.join(',') + ')'
+          : 'Maiestor Stelfid: UNAUTHENTICATED & UNOBSERVED (0 hits in ' + windowTag + ' - Review OWASP API9)';
 
         lenses.push(new vscode.CodeLens(range, {
-          title: riskTitle,
+          title: statusTitle,
           command: ''
         }));
 
@@ -249,12 +261,11 @@ class AegisCodeLensProvider implements vscode.CodeLensProvider {
           arguments: [document.uri, r.startLine, r.endLine, r.method + ' ' + r.fullRoute]
         }));
 
-        if (!apiKey) {
-          lenses.push(new vscode.CodeLens(range, {
-            title: 'Connect Cloud Telemetry (7-Day Free Trial)',
-            command: 'aegisTrace.activateCloud'
-          }));
-        }
+        lenses.push(new vscode.CodeLens(range, {
+          title: 'Keep Route (Mark as Intentional/Annual)',
+          command: 'aegisTrace.keepRoute',
+          arguments: [document.uri, r.startLine, r.method + ' ' + r.fullRoute]
+        }));
       }
     }
 
@@ -263,49 +274,45 @@ class AegisCodeLensProvider implements vscode.CodeLensProvider {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-  const diagnosticCollection = vscode.languages.createDiagnosticCollection('aegisTrace');
-  const codeLensProvider = new AegisCodeLensProvider();
+  const diagnosticCollection = vscode.languages.createDiagnosticCollection('maiestorStelfid');
+  const codeLensProvider = new StelfidCodeLensProvider();
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBar.command = 'aegisTrace.activateCloud';
   statusBar.show();
 
   const updateDiagnostics = (doc: vscode.TextDocument) => {
-    if (!['typescript', 'javascript'].includes(doc.languageId)) {
-      return;
-    }
+    if (!['typescript', 'javascript'].includes(doc.languageId)) return;
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(doc.uri);
     const rootPath = workspaceFolder ? workspaceFolder.uri.fsPath : process.cwd();
     const config = vscode.workspace.getConfiguration('aegisTrace');
     const secretKey = config.get<string>('secretKey') || 'sec_secretkey_test987';
 
-    const telemetry = loadLocalTelemetry(rootPath);
-    const routes = parseDocumentRoutes(doc, secretKey, telemetry);
+    const { map, env, days } = loadLocalTelemetry(rootPath);
+    const routes = parseDocumentRoutes(doc, secretKey, map);
     const diags: vscode.Diagnostic[] = [];
 
-    let zombies = 0;
-    let criticals = 0;
+    let unobserved = 0;
+    let unauthZero = 0;
 
     for (const r of routes) {
-      if (r.hits === 0) {
-        zombies++;
-        if (!r.isAuthenticated) {
-          criticals++;
-        }
+      if (r.hits === 0 && !r.isKeepExempt) {
+        unobserved++;
+        if (!r.isAuthenticated) unauthZero++;
         const range = new vscode.Range(r.startLine, 0, r.endLine, 100);
         const msg = r.isAuthenticated
-          ? '[AegisTrace] Zombie Endpoint (' + r.method + ' ' + r.fullRoute + '): 0 runtime hits observed.'
-          : '[AegisTrace CRITICAL] Unauthenticated Zombie Endpoint (' + r.method + ' ' + r.fullRoute + '): 0 hits & no Auth middleware (OWASP API9:2023).';
-        const severity = r.isAuthenticated ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error;
+          ? '[Maiestor Stelfid] Unobserved Route (' + r.method + ' ' + r.fullRoute + '): 0 hits in ' + env + ' (' + days.toFixed(1) + 'd window). Verify coverage or mark with // @stelfid-keep before pruning.'
+          : '[Maiestor Stelfid] Unauthenticated & Unobserved Route (' + r.method + ' ' + r.fullRoute + '): 0 hits in ' + env + ' & no Auth middleware detected (OWASP API9:2023).';
+        const severity = r.isAuthenticated ? vscode.DiagnosticSeverity.Information : vscode.DiagnosticSeverity.Warning;
         const diag = new vscode.Diagnostic(range, msg, severity);
-        diag.source = 'AegisTrace SecOps';
+        diag.source = 'Maiestor Stelfid';
         diags.push(diag);
       }
     }
 
     diagnosticCollection.set(doc.uri, diags);
-    statusBar.text = zombies > 0
-      ? '$(shield) AegisTrace: ' + zombies + ' Zombies (' + criticals + ' CRITICAL)'
-      : '$(shield) AegisTrace: Protected';
+    statusBar.text = unobserved > 0
+      ? '$(shield) Maiestor Stelfid: ' + unobserved + ' Unobserved (' + unauthZero + ' Unauth)'
+      : '$(shield) Maiestor Stelfid: All Routes Verified';
     codeLensProvider.refresh();
   };
 
@@ -322,42 +329,35 @@ export function activate(context: vscode.ExtensionContext) {
     const doc = await vscode.workspace.openTextDocument(uri);
     const edit = new vscode.WorkspaceEdit();
     const timestamp = new Date().toISOString();
-    edit.insert(uri, new vscode.Position(startLine, 0), '/* [AegisTrace Auto-Prune: ' + label + ' - ' + timestamp + ']\n');
+    edit.insert(uri, new vscode.Position(startLine, 0), '/* [Maiestor Stelfid Safe-Retirement: ' + label + ' - ' + timestamp + ']\n');
     const lastLineText = doc.lineAt(endLine).text;
     edit.insert(uri, new vscode.Position(endLine, lastLineText.length), '\n*/');
     await vscode.workspace.applyEdit(edit);
     await doc.save();
-    vscode.window.showInformationMessage('AegisTrace: Safely commented out zombie route ' + label);
+    vscode.window.showInformationMessage('Maiestor Stelfid: Safely commented out route ' + label);
+  });
+
+  vscode.commands.registerCommand('aegisTrace.keepRoute', async (uri: vscode.Uri, startLine: number, label: string) => {
+    const reason = await vscode.window.showInputBox({
+      prompt: 'Why should this low-frequency route be kept? (e.g. annual-webhook, emergency-recovery, partner-integration)',
+      value: 'intentional-low-frequency-route'
+    });
+    if (!reason) return;
+    const edit = new vscode.WorkspaceEdit();
+    edit.insert(uri, new vscode.Position(startLine, 0), '// @stelfid-keep: ' + reason + '\n');
+    await vscode.workspace.applyEdit(edit);
+    const doc = await vscode.workspace.openTextDocument(uri);
+    await doc.save();
+    vscode.window.showInformationMessage('Maiestor Stelfid: Marked ' + label + ' as intentional (@stelfid-keep).');
   });
 
   vscode.commands.registerCommand('aegisTrace.activateCloud', async () => {
-    const choice = await vscode.window.showQuickPick(
-      [
-        { label: 'Enter existing AegisTrace Cloud API Key', id: 'key' },
-        { label: 'Start 7-Day Free Trial - Pro ($49/mo) / Team ($149/mo) / Business ($399/mo)', id: 'trial' }
-      ],
-      { placeHolder: 'AegisTrace SecOps Cloud - Multi-Node Telemetry & Automated PR Pruning' }
-    );
-
-    if (choice && choice.id === 'key') {
-      const key = await vscode.window.showInputBox({
-        prompt: 'Paste your AEGIS_API_KEY (starts with aegis_live_...)',
-        placeHolder: 'aegis_live_xxxxxxxxxxxxxxxx'
-      });
-      if (key) {
-        await vscode.workspace.getConfiguration('aegisTrace').update('apiKey', key, vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage('AegisTrace Cloud API Key activated!');
-        codeLensProvider.refresh();
-      }
-    } else if (choice && choice.id === 'trial') {
-      vscode.env.openExternal(vscode.Uri.parse('https://github.com/PapiPain/aegis-trace#readme'));
-    }
+    vscode.window.showInformationMessage('Maiestor Stelfid Cloud: Multi-node telemetry sync configuration.');
   });
 
   vscode.commands.registerCommand('aegisTrace.scanWorkspace', () => {
     if (vscode.window.activeTextEditor) {
       updateDiagnostics(vscode.window.activeTextEditor.document);
-      vscode.window.showInformationMessage('AegisTrace: Workspace audit updated.');
     }
   });
 

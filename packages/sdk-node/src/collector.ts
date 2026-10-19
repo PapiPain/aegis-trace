@@ -1,152 +1,133 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { BlindIndexer } from './crypto';
+import { generateBlindHash } from './crypto';
 
-export interface TelemetryHit {
-  method: string;
-  routePattern: string;
-}
-
-export interface AegisTraceOptions {
+export interface StelfidOptions {
   apiKey?: string;
-  clientSecret?: string;
-  ingestionUrl?: string;
-  localFilePath?: string;
+  secretKey: string;
+  environment?: 'local' | 'staging' | 'production' | string;
   flushIntervalMs?: number;
+  localFilePath?: string;
+  ingestUrl?: string;
+  minObservationDays?: number;
 }
 
-const MAX_BUFFER_ENTRIES = 1000;
+interface RouteCounter {
+  calls: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  statusCodes: Record<string, number>;
+}
 
-export class AegisTraceCollector {
-  private buffer: Map<string, { method: string; routeHash: string; count: number }> = new Map();
-  private timer: NodeJS.Timeout | null = null;
-  private apiKey: string;
-  private ingestionUrl: string | null;
-  private localFilePath: string;
-  private flushIntervalMs: number;
-  private indexer: BlindIndexer;
+export interface TelemetryEnvelope {
+  vendor: string;
+  schemaVersion: string;
+  environment: string;
+  observationStartedAt: string;
+  lastFlushedAt: string;
+  routes: Record<string, RouteCounter>;
+}
 
-  constructor(options: AegisTraceOptions = {}) {
-    this.apiKey = options.apiKey || process.env.AEGIS_API_KEY || 'aegis_local_dev';
-    const secret = options.clientSecret || process.env.AEGIS_SECRET || 'sec_aegis_default_local_key';
-    this.ingestionUrl = options.ingestionUrl || process.env.AEGIS_URL || null;
-    this.localFilePath = options.localFilePath || path.resolve(process.cwd(), '.aegis-local.json');
-    this.flushIntervalMs = options.flushIntervalMs || 3000;
-    this.indexer = new BlindIndexer(secret);
+export function stelfidTelemetry(options: StelfidOptions) {
+  const secretKey = options.secretKey || 'sec_secretkey_test987';
+  const environment = options.environment || process.env.NODE_ENV || 'local';
+  const flushIntervalMs = options.flushIntervalMs || 30000;
+  const localFile = options.localFilePath || path.join(process.cwd(), '.aegis-local.json');
 
-    this.timer = setInterval(() => {
-      this.flush().catch((err) => {
-        console.error('[AegisTrace SDK] Error no controlado en flush:', err);
-      });
-    }, this.flushIntervalMs);
+  let observationStartedAt = new Date().toISOString();
+  const memoryStore = new Map<string, RouteCounter>();
+  let dirty = false;
 
-    if (this.timer.unref) {
-      this.timer.unref();
+  // Cargar estado previo para preservar observationStartedAt real
+  if (fs.existsSync(localFile)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(localFile, 'utf8').replace(/^\uFEFF/, ''));
+      if (raw && raw._meta && raw._meta.observationStartedAt) {
+        observationStartedAt = raw._meta.observationStartedAt;
+      }
+      const existingRoutes = raw.routes || raw;
+      for (const [hash, data] of Object.entries(existingRoutes as Record<string, any>)) {
+        if (hash === '_meta') continue;
+        memoryStore.set(hash, {
+          calls: Number(data?.calls ?? 0),
+          firstSeenAt: data?.firstSeenAt || observationStartedAt,
+          lastSeenAt: data?.lastSeenAt || data?.lastSeen || new Date().toISOString(),
+          statusCodes: data?.statusCodes || {}
+        });
+      }
+    } catch {
+      // Ignorar archivo corrupto
     }
+  }
 
-    const shutdownHandler = () => {
-      this.destroy().catch(() => {});
+  const flushToDisk = () => {
+    if (!dirty && fs.existsSync(localFile)) return;
+    dirty = false;
+
+    const nowIso = new Date().toISOString();
+    const output: Record<string, any> = {
+      _meta: {
+        vendor: 'Maiestor Stelfid',
+        schemaVersion: '1.4.0',
+        environment,
+        observationStartedAt,
+        lastFlushedAt: nowIso
+      }
     };
-    process.once('SIGINT', shutdownHandler);
-    process.once('SIGTERM', shutdownHandler);
-  }
 
-  public recordHit(method: string, routePattern: string): void {
-    const normalizedMethod = method.toUpperCase();
-    const routeHash = this.indexer.hashRoute(normalizedMethod, routePattern);
-    const key = `${normalizedMethod}:${routeHash}`;
-
-    const existing = this.buffer.get(key);
-    if (existing) {
-      existing.count += 1;
-    } else if (this.buffer.size < MAX_BUFFER_ENTRIES) {
-      this.buffer.set(key, {
-        method: normalizedMethod,
-        routeHash,
-        count: 1
-      });
+    for (const [hash, info] of memoryStore.entries()) {
+      output[hash] = {
+        calls: info.calls,
+        firstSeenAt: info.firstSeenAt,
+        lastSeen: info.lastSeenAt,
+        statusCodes: info.statusCodes
+      };
     }
-  }
-
-  private flushToLocalFile(events: Array<{ method: string; routeHash: string; count: number }>): void {
-    let store: Record<string, { method: string; calls: number; lastSeen: number }> = {};
-
-    if (fs.existsSync(this.localFilePath)) {
-      try {
-        store = JSON.parse(fs.readFileSync(this.localFilePath, 'utf8'));
-      } catch {
-        store = {};
-      }
-    }
-
-    const now = Date.now();
-    for (const ev of events) {
-      if (store[ev.routeHash]) {
-        store[ev.routeHash].calls += ev.count;
-        store[ev.routeHash].lastSeen = now;
-      } else {
-        store[ev.routeHash] = {
-          method: ev.method,
-          calls: ev.count,
-          lastSeen: now
-        };
-      }
-    }
-
-    fs.writeFileSync(this.localFilePath, JSON.stringify(store, null, 2), 'utf8');
-  }
-
-  public async flush(): Promise<void> {
-    if (this.buffer.size === 0) return;
-
-    const snapshot = new Map(this.buffer);
-    this.buffer.clear();
-
-    const events = Array.from(snapshot.values());
-
-    // Modo Zero-Server Local si no se configuró ingestionUrl
-    if (!this.ingestionUrl) {
-      this.flushToLocalFile(events);
-      return;
-    }
-
-    const timestamp = Date.now().toString();
-    const body = JSON.stringify({ events });
-    const signature = this.indexer.signPayload(body, timestamp);
 
     try {
-      const response = await fetch(this.ingestionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Aegis-Key': this.apiKey,
-          'X-Aegis-Timestamp': timestamp,
-          'X-Aegis-Signature': signature
-        },
-        body
-      });
+      fs.writeFileSync(localFile, JSON.stringify(output, null, 2) + '\n', 'utf8');
+    } catch {
+      // No interrumpir ejecucion del servidor en produccion
+    }
+  };
 
-      if (!response.ok) {
-        throw new Error(`Servidor respondió con código ${response.status}`);
-      }
-    } catch (err: any) {
-      // Fallback inteligente: si el servidor remoto no está disponible, restaurar en memoria
-      for (const [key, item] of snapshot.entries()) {
-        const current = this.buffer.get(key);
+  const timer = setInterval(flushToDisk, flushIntervalMs);
+  if (typeof timer.unref === 'function') {
+    timer.unref();
+  }
+
+  return function stelfidMiddleware(req: any, res: any, next: any) {
+    res.on('finish', () => {
+      try {
+        const routePath = (req.baseUrl || '') + (req.route?.path || req.path || req.url || '/');
+        const method = req.method || 'GET';
+        const hash = generateBlindHash(method, routePath, secretKey);
+        const now = new Date().toISOString();
+        const statusKey = String(res.statusCode || 200);
+
+        const current = memoryStore.get(hash);
         if (current) {
-          current.count += item.count;
-        } else if (this.buffer.size < MAX_BUFFER_ENTRIES) {
-          this.buffer.set(key, item);
+          current.calls += 1;
+          current.lastSeenAt = now;
+          current.statusCodes[statusKey] = (current.statusCodes[statusKey] || 0) + 1;
+        } else {
+          memoryStore.set(hash, {
+            calls: 1,
+            firstSeenAt: now,
+            lastSeenAt: now,
+            statusCodes: { [statusKey]: 1 }
+          });
         }
+        dirty = true;
+        flushToDisk();
+      } catch {
+        // Fail-open siempre para no afectar produccion
       }
-    }
-  }
-
-  public async destroy(): Promise<void> {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
-    await this.flush();
-  }
+    });
+    next();
+  };
 }
+
+// Alias de retrocompatibilidad
+export const aegisTraceMiddleware = stelfidTelemetry;
+export const aegisTrace = stelfidTelemetry;
