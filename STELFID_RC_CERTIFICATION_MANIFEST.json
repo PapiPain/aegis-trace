@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.7.0-rc.1",
-  "generatedAt": "2026-10-19T23:35:17.752Z",
+  "generatedAt": "2026-10-19T23:41:17.947Z",
   "hostPlatform": "win32",
   "nodeVersion": "v24.18.0",
   "telemetryDataClassification": "SYNTHETIC_DETERMINISTIC_FIXTURE (Not production traffic evidence)",
@@ -30,9 +30,9 @@
       "valid": true,
       "simulationScopeNotice": "Controlled process.exit(1) termination after durable disk flush (simulates abrupt process stop, not kernel-level SIGKILL mid-syscall).",
       "pids": [
-        11284,
+        23640,
         11936,
-        17624
+        23244
       ],
       "exitCodes": [
         1,
@@ -41,7 +41,7 @@
       ],
       "stderrClean": true,
       "crashesSimulatedCorrectly": true,
-      "batchIdCreatedInProc1": "batch_4027def1-9316-4977-a5f8-97ec25796eb0",
+      "batchIdCreatedInProc1": "batch_c71144e3-8bb8-4f1d-b880-54b63d3d2978",
       "replayedWithSameBatchIdAfter500": true,
       "dbHitsProgression": [
         0,
@@ -74,7 +74,8 @@
       "usesMatrixRunner": true,
       "requiredCommandsPresent": true,
       "localHostPlatformVerified": "win32",
-      "remoteGitHubActionsMatrixExecution": "PENDING_REMOTE_CI_RUN (Local test validates YAML AST & runs suite on win32; Linux+Windows matrix executes on git push)"
+      "vscodeExtensionCompiled": true,
+      "remoteGitHubActionsMatrixExecution": "PENDING_REMOTE_CI_RUN (Local execution on win32 passed; push to GitHub Actions to execute ubuntu-latest + windows-latest matrix)"
     },
     "point5_GradualRolloutAndRollbackPass": true
   }

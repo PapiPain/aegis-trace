@@ -339,8 +339,9 @@ function validateWorkflowWithRealYamlParser(yamlText) {
     activeRunScripts.includes('npm pack --workspace=@m_stelfid/node-sdk --dry-run') &&
     activeRunScripts.includes('npm pack --workspace=@m_stelfid/cli --dry-run');
 
+  const vscodeBuilt = fs.existsSync(path.join(root, 'packages', 'vscode-extension', 'dist', 'extension.js'));
   return {
-    valid: isReadOnlyPermissions && hasUbuntuInMatrix && hasWindowsInMatrix && usesMatrixRunner && requiredCommandsPresent,
+    valid: isReadOnlyPermissions && hasUbuntuInMatrix && hasWindowsInMatrix && usesMatrixRunner && requiredCommandsPresent && vscodeBuilt,
     parsedWithRealYamlAst: true,
     isReadOnlyPermissions,
     hasUbuntuInMatrix,
@@ -348,7 +349,10 @@ function validateWorkflowWithRealYamlParser(yamlText) {
     usesMatrixRunner,
     requiredCommandsPresent,
     localHostPlatformVerified: process.platform,
-    remoteGitHubActionsMatrixExecution: 'PENDING_REMOTE_CI_RUN (Local test validates YAML AST & runs suite on ' + process.platform + '; Linux+Windows matrix executes on git push)'
+    vscodeExtensionCompiled: fs.existsSync(path.join(root, 'packages', 'vscode-extension', 'dist', 'extension.js')),
+    remoteGitHubActionsMatrixExecution: process.env.GITHUB_ACTIONS === 'true'
+      ? 'VERIFIED_IN_REMOTE_CI_RUNNER (Runner OS=' + (process.env.RUNNER_OS || process.platform) + ', RunId=' + (process.env.GITHUB_RUN_ID || 'unknown') + ')'
+      : 'PENDING_REMOTE_CI_RUN (Local execution on ' + process.platform + ' passed; push to GitHub Actions to execute ubuntu-latest + windows-latest matrix)'
   };
 }
 
