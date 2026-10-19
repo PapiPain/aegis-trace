@@ -1,5 +1,5 @@
 {
-  "name": "ingestion-api",
+  "name": "m_stelfid-ingestion-api",
   "version": "1.0.0",
   "private": true,
   "description": "AegisTrace Zero-Knowledge Telemetry Ingestion API (SQLite WAL)",

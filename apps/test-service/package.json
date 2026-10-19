@@ -1,5 +1,5 @@
 {
-  "name": "test-service",
+  "name": "m_stelfid-test-service",
   "version": "1.0.0",
   "private": true,
   "description": "Servicio de prueba para auditoría AegisTrace",
@@ -8,8 +8,8 @@
     "dev": "tsx src/app.ts"
   },
   "dependencies": {
-    "@aegis-trace/node-sdk": "*",
-    "express": "^5.0.0"
+    "express": "^5.0.0",
+    "@m_stelfid/node-sdk": "1.4.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

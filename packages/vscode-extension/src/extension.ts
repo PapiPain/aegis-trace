@@ -223,7 +223,7 @@ class StelfidCodeLensProvider implements vscode.CodeLensProvider {
   public provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
     const rootPath = workspaceFolder ? workspaceFolder.uri.fsPath : process.cwd();
-    const config = vscode.workspace.getConfiguration('aegisTrace');
+    const config = vscode.workspace.getConfiguration('stelfid');
     const secretKey = config.get<string>('secretKey') || 'sec_secretkey_test987';
 
     const { map, env, days } = loadLocalTelemetry(rootPath);
@@ -257,13 +257,13 @@ class StelfidCodeLensProvider implements vscode.CodeLensProvider {
 
         lenses.push(new vscode.CodeLens(range, {
           title: 'Safe Prune (Comment Out)',
-          command: 'aegisTrace.pruneRoute',
+          command: 'stelfid.pruneRoute',
           arguments: [document.uri, r.startLine, r.endLine, r.method + ' ' + r.fullRoute]
         }));
 
         lenses.push(new vscode.CodeLens(range, {
           title: 'Keep Route (Mark as Intentional/Annual)',
-          command: 'aegisTrace.keepRoute',
+          command: 'stelfid.keepRoute',
           arguments: [document.uri, r.startLine, r.method + ' ' + r.fullRoute]
         }));
       }
@@ -277,14 +277,14 @@ export function activate(context: vscode.ExtensionContext) {
   const diagnosticCollection = vscode.languages.createDiagnosticCollection('maiestorStelfid');
   const codeLensProvider = new StelfidCodeLensProvider();
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  statusBar.command = 'aegisTrace.activateCloud';
+  statusBar.command = 'stelfid.activateCloud';
   statusBar.show();
 
   const updateDiagnostics = (doc: vscode.TextDocument) => {
     if (!['typescript', 'javascript'].includes(doc.languageId)) return;
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(doc.uri);
     const rootPath = workspaceFolder ? workspaceFolder.uri.fsPath : process.cwd();
-    const config = vscode.workspace.getConfiguration('aegisTrace');
+    const config = vscode.workspace.getConfiguration('stelfid');
     const secretKey = config.get<string>('secretKey') || 'sec_secretkey_test987';
 
     const { map, env, days } = loadLocalTelemetry(rootPath);
@@ -325,7 +325,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.workspace.onDidChangeTextDocument(e => updateDiagnostics(e.document))
   );
 
-  vscode.commands.registerCommand('aegisTrace.pruneRoute', async (uri: vscode.Uri, startLine: number, endLine: number, label: string) => {
+  vscode.commands.registerCommand('stelfid.pruneRoute', async (uri: vscode.Uri, startLine: number, endLine: number, label: string) => {
     const doc = await vscode.workspace.openTextDocument(uri);
     const edit = new vscode.WorkspaceEdit();
     const timestamp = new Date().toISOString();
@@ -337,7 +337,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.showInformationMessage('Maiestor Stelfid: Safely commented out route ' + label);
   });
 
-  vscode.commands.registerCommand('aegisTrace.keepRoute', async (uri: vscode.Uri, startLine: number, label: string) => {
+  vscode.commands.registerCommand('stelfid.keepRoute', async (uri: vscode.Uri, startLine: number, label: string) => {
     const reason = await vscode.window.showInputBox({
       prompt: 'Why should this low-frequency route be kept? (e.g. annual-webhook, emergency-recovery, partner-integration)',
       value: 'intentional-low-frequency-route'
@@ -351,11 +351,11 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.showInformationMessage('Maiestor Stelfid: Marked ' + label + ' as intentional (@stelfid-keep).');
   });
 
-  vscode.commands.registerCommand('aegisTrace.activateCloud', async () => {
+  vscode.commands.registerCommand('stelfid.activateCloud', async () => {
     vscode.window.showInformationMessage('Maiestor Stelfid Cloud: Multi-node telemetry sync configuration.');
   });
 
-  vscode.commands.registerCommand('aegisTrace.scanWorkspace', () => {
+  vscode.commands.registerCommand('stelfid.scanWorkspace', () => {
     if (vscode.window.activeTextEditor) {
       updateDiagnostics(vscode.window.activeTextEditor.document);
     }

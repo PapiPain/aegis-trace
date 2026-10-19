@@ -50,14 +50,14 @@ We believe in strict engineering candor. Below is the exact status of every capa
 
 ```bash
 # 1. Run an evidence-based audit on your workspace
-npx @aegis-trace/cli --dir ./apps/test-service --secret sec_secretkey_test987
+npx @m_stelfid/cli --dir ./apps/test-service --secret sec_secretkey_test987
 
 # 2. Mark an intentional low-frequency route in your code so it is never pruned
 // @stelfid-keep: annual-tax-reconciliation-webhook
 app.post('/api/v1/webhooks/annual-close', requireAuth, handler);
 
 # 3. Safely comment out only verified retirement candidates
-npx @aegis-trace/cli --dir ./apps/test-service --prune
+npx @m_stelfid/cli --dir ./apps/test-service --prune
 ```
 
 ---

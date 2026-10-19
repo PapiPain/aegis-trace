@@ -1,10 +1,10 @@
 {
-  "name": "@aegis-trace/cli",
+  "name": "@m_stelfid/cli",
   "version": "1.4.0",
   "description": "Maiestor Stelfid — Evidence-based API route retirement & OWASP API9 surface auditor.",
   "main": "dist/index.js",
   "bin": {
-    "aegis-trace": "dist/index.js",
+    "m_stelfid": "dist/index.js",
     "stelfid": "dist/index.js"
   },
   "files": [
@@ -30,7 +30,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/PapiPain/aegis-trace.git"
+    "url": "https://github.com/PapiPain/maiestor-stelfid.git"
   },
   "homepage": "https://github.com/PapiPain/aegis-trace#readme",
   "bugs": {

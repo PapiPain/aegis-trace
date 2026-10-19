@@ -1,5 +1,5 @@
 import express from 'express';
-import { aegisTrace } from '@aegis-trace/node-sdk';
+import { aegisTrace } from '@m_stelfid/node-sdk';
 
 const app = express();
 const PORT = 3000;
@@ -32,7 +32,7 @@ app.post('/api/users', (req, res) => {
 
 // ==========================================
 // RUTAS ZOMBI (Nunca recibirán peticiones)
-// Deben ser detectadas por AegisTrace CLI
+// Deben ser detectadas por Maiestor Stelfid CLI
 // ==========================================
 
 app.get('/api/legacy/export-v1', (_req, res) => {

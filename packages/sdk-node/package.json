@@ -1,5 +1,5 @@
 {
-  "name": "@aegis-trace/node-sdk",
+  "name": "@m_stelfid/node-sdk",
   "version": "1.4.0",
   "description": "Maiestor Stelfid — Zero-Knowledge blind runtime telemetry SDK for API route retirement evidence.",
   "main": "dist/index.js",
@@ -35,5 +35,9 @@
     "@types/node": "^22.0.0",
     "express": "^5.2.1",
     "typescript": "^5.5.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PapiPain/maiestor-stelfid.git"
   }
 }

@@ -1,15 +1,22 @@
 {
-  "name": "aegis-trace-monorepo",
-  "version": "1.0.0",
+  "name": "m_stelfid-monorepo",
+  "version": "1.4.0",
   "private": true,
+  "description": "Maiestor Stelfid (@m_stelfid) — API Route Evidence & Safe Retirement Platform",
   "workspaces": [
     "packages/*",
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build --workspace=@aegis-trace/node-sdk && npm run build --workspace=@aegis-trace/cli",
-    "audit": "node packages/cli/dist/index.js --dir=apps/test-service/src",
-    "prune": "node packages/cli/dist/index.js --dir=apps/test-service/src --prune",
-    "restore": "node packages/cli/dist/index.js --dir=apps/test-service/src --restore"
+    "build": "npm run build --workspace=@m_stelfid/node-sdk && npm run build --workspace=@m_stelfid/cli",
+    "start:api": "npm run start --workspace=m_stelfid-ingestion-api",
+    "start:test": "npm run start --workspace=m_stelfid-test-service",
+    "scan": "node packages/cli/dist/index.js --dir apps/test-service"
+  },
+  "author": "Ezequiel Canales Moran (Maiestor Stelfid Labs)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PapiPain/maiestor-stelfid.git"
   }
 }

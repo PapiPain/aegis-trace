@@ -1,0 +1,27 @@
+name: Maiestor Stelfid — API Route Evidence Audit
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  stelfid-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies & Build Maiestor Stelfid
+        run: |
+          npm install --ignore-scripts
+          npm run build
+
+      - name: Run Maiestor Stelfid Route Evidence Auditor
+        run: node packages/cli/dist/index.js --dir apps/test-service

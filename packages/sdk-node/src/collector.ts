@@ -32,7 +32,7 @@ export function stelfidTelemetry(options: StelfidOptions) {
   const secretKey = options.secretKey || 'sec_secretkey_test987';
   const environment = options.environment || process.env.NODE_ENV || 'local';
   const flushIntervalMs = options.flushIntervalMs || 30000;
-  const localFile = options.localFilePath || path.join(process.cwd(), '.aegis-local.json');
+  const localFile = options.localFilePath || path.join(process.cwd(), '.stelfid-local.json');
 
   let observationStartedAt = new Date().toISOString();
   const memoryStore = new Map<string, RouteCounter>();

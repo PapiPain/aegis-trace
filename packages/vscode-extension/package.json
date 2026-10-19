@@ -1,13 +1,14 @@
 {
-  "name": "aegis-trace-vscode",
-  "displayName": "Maiestor Stelfid - API Route Evidence & Safe Retirement Auditor",
+  "name": "m-stelfid-vscode",
+  "displayName": "Maiestor Stelfid — API Route Evidence & Safe Retirement Auditor",
   "description": "Connect your API code with runtime telemetry to identify unnecessary routes and retire them with evidence, without breaking production.",
   "version": "1.4.0",
-  "publisher": "aegis-trace",
+  "publisher": "m-stelfid",
   "license": "MIT",
+  "icon": "icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/PapiPain/aegis-trace.git"
+    "url": "https://github.com/PapiPain/maiestor-stelfid.git"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -24,7 +25,7 @@
     "dead-code",
     "owasp",
     "api",
-    "ast",
+    "stelfid",
     "devsecops"
   ],
   "activationEvents": [
@@ -35,39 +36,39 @@
   "contributes": {
     "commands": [
       {
-        "command": "aegisTrace.scanWorkspace",
+        "command": "stelfid.scanWorkspace",
         "title": "Maiestor Stelfid: Audit Workspace Route Evidence"
       },
       {
-        "command": "aegisTrace.pruneRoute",
+        "command": "stelfid.pruneRoute",
         "title": "Maiestor Stelfid: Safe Comment Out Route"
       },
       {
-        "command": "aegisTrace.keepRoute",
+        "command": "stelfid.keepRoute",
         "title": "Maiestor Stelfid: Mark Route as Intentional (@stelfid-keep)"
       },
       {
-        "command": "aegisTrace.activateCloud",
+        "command": "stelfid.activateCloud",
         "title": "Maiestor Stelfid: Configure Multi-Node Telemetry"
       }
     ],
     "configuration": {
-      "title": "AegisTrace SecOps",
+      "title": "Maiestor Stelfid",
       "properties": {
-        "aegisTrace.apiKey": {
+        "stelfid.apiKey": {
           "type": "string",
           "default": "",
-          "description": "AegisTrace Cloud API Key (Pro $49/mo, Team $149/mo, Business $399/mo)."
+          "description": "Maiestor Stelfid Cloud API Key."
         },
-        "aegisTrace.secretKey": {
+        "stelfid.secretKey": {
           "type": "string",
           "default": "sec_secretkey_test987",
           "description": "Zero-Knowledge HMAC-SHA256 Secret Key used to hash routes locally."
         },
-        "aegisTrace.cloudUrl": {
+        "stelfid.cloudUrl": {
           "type": "string",
           "default": "http://localhost:4000/v1/telemetry/hashes",
-          "description": "AegisTrace Cloud or self-hosted telemetry endpoint."
+          "description": "Maiestor Stelfid Cloud or self-hosted telemetry endpoint."
         }
       }
     }
@@ -81,6 +82,5 @@
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "typescript": "^5.3.3"
-  },
-  "icon": "icon.png"
+  }
 }
