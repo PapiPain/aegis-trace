@@ -1,3 +1,4 @@
+import billingRouter from './routes/billing';
 import express from 'express';
 import { aegisTrace } from '@m_stelfid/node-sdk';
 
@@ -48,3 +49,5 @@ app.delete('/api/admin/purge-cache', (_req, res) => {
 app.listen(PORT, () => {
   console.log(`[Host App] Servidor corriendo en http://localhost:${PORT}`);
 });
+// Montaje modular sin anotaciones manuales (Auto-detectado por Maiestor Stelfid v1.5.0)
+app.use('/api/v2/billing', billingRouter);

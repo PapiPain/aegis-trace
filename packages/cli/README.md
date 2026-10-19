@@ -36,7 +36,9 @@ We believe in strict engineering candor. Below is the exact status of every capa
 
 | Capability | Status | Scope & Current Limitations |
 | :--- | :--- | :--- |
-| **Static Route & Auth Scanner (Express.js)** | **Implemented & Verified** | Scans `.ts`/`.js` files, resolves `@stelfid-prefix`, detects common auth middleware patterns, and cross-checks test files. |
+| **Static Route & Cross-File Mount Scanner (Express.js)** | **Implemented & Verified (v1.5.0)** | Automatically resolves cross-file `app.use('/prefix', router)` mounts, `@stelfid-prefix`, `.stelfidignore`, auth middlewares, and test references. |
+| **Staged Deprecation & Observe-Only Canary (`@m_stelfid/node-sdk`)** | **Implemented & Verified (v1.5.0)** | Injects RFC `Deprecation`/`Sunset` headers and logs dormant route reactivations in Observe-Only mode without blocking legitimate clients. |
+| **Audit Evidence Exporter (`--export-evidence`)** | **Implemented & Verified (v1.5.0)** | Exports Markdown/JSON inventory evidence reports with SHA-256 integrity digests to support internal OWASP API9:2023 security reviews. |
 | **Zero-Knowledge Local Telemetry (`HMAC-SHA256`)** | **Implemented & Verified** | Hashes `METHOD:/normalized/route` locally with your secret key and records observation window metadata. |
 | **Retirement Confidence & `@stelfid-keep` Guard** | **Implemented & Verified** | Prevents premature `--prune` execution when observation window or environment coverage is insufficient. |
 | **VS Code Extension (CodeLens + 1-Click Keep/Prune)** | **Implemented & Verified** | Real-time inline status, 1-click `Safe Prune`, and 1-click `Keep Route (@stelfid-keep)` annotation. |

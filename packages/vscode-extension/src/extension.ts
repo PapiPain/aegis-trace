@@ -337,6 +337,20 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.showInformationMessage('Maiestor Stelfid: Safely commented out route ' + label);
   });
 
+  vscode.commands.registerCommand('stelfid.deprecateRoute', async (uri: vscode.Uri, startLine: number, label: string) => {
+    const sunset = await vscode.window.showInputBox({
+      prompt: 'Target Sunset Date (YYYY-MM-DD) for Observe-Only Staged Deprecation:',
+      value: '2026-12-31'
+    });
+    if (!sunset) return;
+    const edit = new vscode.WorkspaceEdit();
+    edit.insert(uri, new vscode.Position(startLine, 0), '// @stelfid-deprecated: sunset=' + sunset + '\n');
+    await vscode.workspace.applyEdit(edit);
+    const doc = await vscode.workspace.openTextDocument(uri);
+    await doc.save();
+    vscode.window.showInformationMessage('Maiestor Stelfid: Staged deprecation (' + sunset + ') for ' + label);
+  });
+
   vscode.commands.registerCommand('stelfid.keepRoute', async (uri: vscode.Uri, startLine: number, label: string) => {
     const reason = await vscode.window.showInputBox({
       prompt: 'Why should this low-frequency route be kept? (e.g. annual-webhook, emergency-recovery, partner-integration)',

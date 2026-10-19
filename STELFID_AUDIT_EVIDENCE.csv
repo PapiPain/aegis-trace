@@ -1,0 +1,7 @@
+Method,FullRoute,PrefixSource,Authenticated,AuthMiddlewares,RuntimeHits,State,CanAutoPrune,File,Line,ConfidenceEvidence
+GET,/api/users,none,false,"",0,UNOBSERVED_LOW_CONFIDENCE,false,apps\test-service\src\app.ts,22,"Unobserved [Low Retirement Confidence - Env: local (0.0d observed)]"
+GET,/api/users/:id,none,false,"",0,UNOBSERVED_LOW_CONFIDENCE,false,apps\test-service\src\app.ts,26,"Unobserved [Low Retirement Confidence - Env: local (0.0d observed)]"
+POST,/api/users,none,false,"",0,UNOBSERVED_LOW_CONFIDENCE,false,apps\test-service\src\app.ts,30,"Unobserved [Low Retirement Confidence - Env: local (0.0d observed)]"
+GET,/api/legacy/export-v1,none,false,"",0,UNOBSERVED_LOW_CONFIDENCE,false,apps\test-service\src\app.ts,39,"Unobserved [Low Retirement Confidence - Env: local (0.0d observed)]"
+POST,/api/v2/billing/annual-tax-webhook,auto-mount,true,"requireJwtAuth",0,EXEMPT_KEEP,false,apps\test-service\src\routes\billing.ts,10,"Protected by @stelfid-keep (annual-tax-reconciliation-webhook)"
+GET,/api/v2/billing/invoices-legacy-xml,auto-mount,true,"requireJwtAuth",0,STAGE_DEPRECATED,false,apps\test-service\src\routes\billing.ts,15,"Staged Deprecation [Observe-Only Canary / Sunset: sunset=2026-12-31]"

@@ -3,7 +3,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { scanDirectoryForRoutes } from './analyzer';
-import { evaluateRoutesWithEvidence, printEvidenceReport, TelemetryContext, EvaluatedRoute } from './reporter';
+import {
+  evaluateRoutesWithEvidence,
+  printEvidenceReport,
+  exportAuditEvidenceFile,
+  TelemetryContext,
+  EvaluatedRoute
+} from './reporter';
 
 function loadTelemetryWithContext(targetDir: string, minRequiredDays: number): {
   map: Map<string, number>;
@@ -14,6 +20,7 @@ function loadTelemetryWithContext(targetDir: string, minRequiredDays: number): {
     path.join(targetDir, '.aegis-local.json'),
     path.join(process.cwd(), '.stelfid-local.json'),
     path.join(process.cwd(), '.aegis-local.json'),
+    path.join(process.cwd(), 'apps', 'test-service', '.stelfid-local.json'),
     path.join(process.cwd(), 'apps', 'test-service', '.aegis-local.json')
   ];
 
@@ -21,6 +28,7 @@ function loadTelemetryWithContext(targetDir: string, minRequiredDays: number): {
   let environment = 'local';
   let observationStartedAt: string | null = null;
   let observationDays = 0;
+  let reactivationEventsCount = 0;
 
   const found = candidates.find(p => fs.existsSync(p));
   if (found) {
@@ -34,14 +42,15 @@ function loadTelemetryWithContext(targetDir: string, minRequiredDays: number): {
           observationDays = Math.max(0, diffMs / (1000 * 60 * 60 * 24));
         }
       }
+      if (Array.isArray(raw.reactivationEvents)) {
+        reactivationEventsCount = raw.reactivationEvents.length;
+      }
       const entries = raw.routes || raw;
       for (const [hash, val] of Object.entries(entries as Record<string, any>)) {
-        if (hash === '_meta') continue;
+        if (hash === '_meta' || hash === 'reactivationEvents') continue;
         map.set(hash, Number(val?.calls ?? 1));
       }
-    } catch {
-      // ignore parse errors
-    }
+    } catch {}
   }
 
   return {
@@ -50,7 +59,8 @@ function loadTelemetryWithContext(targetDir: string, minRequiredDays: number): {
       environment,
       observationDays,
       minRequiredDays,
-      observationStartedAt
+      observationStartedAt,
+      reactivationEventsCount
     }
   };
 }
@@ -80,10 +90,8 @@ function pruneRoutesSafely(routesToPrune: EvaluatedRoute[]): number {
       lines[endIdx] = lines[endIdx] + '\n*/';
       totalPruned++;
     }
-
     fs.writeFileSync(filePath, lines.join('\n') + '\n', 'utf8');
   }
-
   return totalPruned;
 }
 
@@ -94,6 +102,7 @@ async function main() {
   let minDays = Number(process.env.STELFID_MIN_DAYS || 14);
   let shouldPrune = false;
   let forcePrune = false;
+  let exportEvidencePath: string | null = null;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -103,6 +112,8 @@ async function main() {
       secretKey = args[++i];
     } else if (arg === '--min-days' && args[i + 1]) {
       minDays = Number(args[++i]);
+    } else if ((arg === '--export-evidence' || arg === '-e') && args[i + 1]) {
+      exportEvidencePath = args[++i];
     } else if (arg === '--prune') {
       shouldPrune = true;
     } else if (arg === '--force-prune') {
@@ -117,6 +128,14 @@ async function main() {
 
   printEvidenceReport(evaluated, context);
 
+  if (exportEvidencePath) {
+    const writtenPaths = exportAuditEvidenceFile(exportEvidencePath, evaluated, context);
+    for (const wp of writtenPaths) {
+      console.log(' [Stelfid Evidence Exporter]: Verifiable audit report written to: ' + wp);
+    }
+    console.log('');
+  }
+
   if (shouldPrune) {
     const eligible = evaluated.filter(r =>
       forcePrune
@@ -125,13 +144,13 @@ async function main() {
     );
 
     if (eligible.length === 0) {
-      console.log(' 🛡️  [Stelfid Safe-Prune Guard]: No routes met high-confidence retirement criteria.');
-      console.log('     To protect production against premature removal (e.g., annual webhooks or short');
-      console.log('     local telemetry windows), routes with insufficient observation are NOT pruned');
-      console.log('     automatically. Use --force-prune in local testing or add // @stelfid-keep to exempt.\n');
+      console.log(' [Stelfid Safe-Prune Guard]: No routes met high-confidence retirement criteria.');
+      console.log(' To protect production against premature removal (e.g., annual webhooks or short');
+      console.log(' local telemetry windows), routes with insufficient observation are NOT pruned');
+      console.log(' automatically. Use --force-prune in local testing or add // @stelfid-keep to exempt.\n');
     } else {
       const count = pruneRoutesSafely(eligible);
-      console.log(' ✔  [Stelfid Safe-Retirement]: Safely commented out ' + count + ' route(s) with audit timestamps.\n');
+      console.log(' [Stelfid Safe-Retirement]: Safely commented out ' + count + ' route(s) with audit timestamps.\n');
     }
   }
 }

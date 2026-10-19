@@ -5,6 +5,7 @@ import { createHmac } from 'crypto';
 export type RetirementState =
   | 'ACTIVE'
   | 'EXEMPT_KEEP'
+  | 'STAGE_DEPRECATED'
   | 'UNOBSERVED_LOW_CONFIDENCE'
   | 'CANDIDATE_PROTECTED'
   | 'CANDIDATE_UNAUTHENTICATED';
@@ -14,6 +15,7 @@ export interface AnalyzedRoute {
   method: string;
   rawRoute: string;
   fullRoute: string;
+  prefixSource: 'auto-mount' | 'annotation' | 'none';
   line: number;
   endLine: number;
   hash: string;
@@ -21,6 +23,8 @@ export interface AnalyzedRoute {
   authMiddlewares: string[];
   isKeepExempt: boolean;
   keepReason: string | null;
+  isDeprecatedStage: boolean;
+  sunsetDate: string | null;
   referencedInTests: boolean;
 }
 
@@ -48,6 +52,31 @@ export function hashRoute(method: string, routePattern: string, secretKey: strin
   return createHmac('sha256', secretKey).update(canonical).digest('hex');
 }
 
+function loadIgnorePatterns(targetDir: string): string[] {
+  const ignoreFiles = [
+    path.join(targetDir, '.stelfidignore'),
+    path.join(process.cwd(), '.stelfidignore')
+  ];
+  const found = ignoreFiles.find(f => fs.existsSync(f));
+  if (!found) return [];
+  try {
+    return fs.readFileSync(found, 'utf8')
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(l => l.length > 0 && !l.startsWith('#'));
+  } catch {
+    return [];
+  }
+}
+
+function isRouteIgnored(fullRoute: string, relFile: string, patterns: string[]): boolean {
+  for (const pat of patterns) {
+    if (fullRoute === pat || fullRoute.startsWith(pat.replace(/\*$/, ''))) return true;
+    if (relFile.replace(/\\/g, '/').includes(pat.replace(/\*$/, ''))) return true;
+  }
+  return false;
+}
+
 function collectTestReferences(targetDir: string): string {
   const chunks: string[] = [];
   function walkTests(dir: string) {
@@ -58,11 +87,7 @@ function collectTestReferences(targetDir: string): string {
       if (entry.isDirectory()) {
         walkTests(full);
       } else if (/\.(test|spec)\.(ts|js)$/i.test(entry.name)) {
-        try {
-          chunks.push(fs.readFileSync(full, 'utf8'));
-        } catch {
-          // ignore
-        }
+        try { chunks.push(fs.readFileSync(full, 'utf8')); } catch {}
       }
     }
   }
@@ -70,39 +95,125 @@ function collectTestReferences(targetDir: string): string {
   return chunks.join('\n');
 }
 
+function buildCrossFileMountPrefixMap(sourceFiles: string[]): Map<string, string> {
+  const prefixByFile = new Map<string, string>();
+  const resolveImportTarget = (fromFile: string, importSpec: string): string | null => {
+    if (!importSpec.startsWith('.')) return null;
+    const base = path.resolve(path.dirname(fromFile), importSpec);
+    const candidates = [
+      base,
+      base + '.ts',
+      base + '.js',
+      path.join(base, 'index.ts'),
+      path.join(base, 'index.js')
+    ];
+    return candidates.find(c => fs.existsSync(c) && fs.statSync(c).isFile()) || null;
+  };
+
+  for (const file of sourceFiles) {
+    let content = '';
+    try { content = fs.readFileSync(file, 'utf8'); } catch { continue; }
+    const importedVars = new Map<string, string>();
+
+    const esmRegex = /import\s+(?:\*\s+as\s+)?([a-zA-Z0-9_$]+|\{[^{}]+\})\s+from\s+['"]([^'"]+)['"]/g;
+    let m: RegExpExecArray | null;
+    while ((m = esmRegex.exec(content)) !== null) {
+      const clause = m[1].trim();
+      const spec = m[2].trim();
+      const resolved = resolveImportTarget(file, spec);
+      if (!resolved) continue;
+      if (clause.startsWith('{')) {
+        const names = clause.slice(1, -1).split(',').map(s => s.trim());
+        for (const n of names) {
+          const parts = n.split(/\s+as\s+/i);
+          const localName = (parts[1] || parts[0]).trim();
+          if (localName) importedVars.set(localName, resolved);
+        }
+      } else {
+        importedVars.set(clause, resolved);
+      }
+    }
+
+    const cjsRegex = /(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+    while ((m = cjsRegex.exec(content)) !== null) {
+      const resolved = resolveImportTarget(file, m[2].trim());
+      if (resolved) importedVars.set(m[1].trim(), resolved);
+    }
+
+    const mountRegex = /\b(?:app|router|[a-zA-Z0-9_$]*Router)\.use\s*\(\s*['"`]([^'"`]+)['"`]\s*,([^;\n]+)\)/g;
+    while ((m = mountRegex.exec(content)) !== null) {
+      const mountPrefix = m[1].trim();
+      const argsPart = m[2];
+      const argIds = argsPart.match(/\b[a-zA-Z_$][a-zA-Z0-9_$]*\b/g) || [];
+      for (const id of argIds) {
+        const targetFile = importedVars.get(id);
+        if (targetFile) {
+          const existingParentPrefix = prefixByFile.get(file) || '';
+          const combined = existingParentPrefix
+            ? existingParentPrefix.replace(/\/$/, '') + '/' + mountPrefix.replace(/^\//, '')
+            : mountPrefix;
+          prefixByFile.set(targetFile, combined);
+        }
+      }
+    }
+  }
+  return prefixByFile;
+}
+
 export function scanDirectoryForRoutes(targetDir: string, secretKey: string): AnalyzedRoute[] {
-  const results: AnalyzedRoute[] = [];
+  const sourceFiles: string[] = [];
   const testCorpus = collectTestReferences(targetDir);
+  const ignorePatterns = loadIgnorePatterns(targetDir);
 
   function walk(currentDir: string) {
     if (!fs.existsSync(currentDir)) return;
     const entries = fs.readdirSync(currentDir, { withFileTypes: true });
-
     for (const entry of entries) {
       if (['node_modules', 'dist', '.git', 'coverage'].includes(entry.name)) continue;
       const fullPath = path.join(currentDir, entry.name);
       if (entry.isDirectory()) {
         walk(fullPath);
       } else if (/\.(ts|js)$/i.test(entry.name) && !/\.(test|spec|d)\.(ts|js)$/i.test(entry.name)) {
-        results.push(...parseFileRoutes(fullPath, secretKey, testCorpus));
+        sourceFiles.push(path.resolve(fullPath));
       }
     }
   }
-
   walk(targetDir);
+
+  const autoMountPrefixes = buildCrossFileMountPrefixMap(sourceFiles);
+  const results: AnalyzedRoute[] = [];
+  for (const filePath of sourceFiles) {
+    const autoPrefix = autoMountPrefixes.get(filePath) || '';
+    const fileRoutes = parseFileRoutes(filePath, secretKey, testCorpus, autoPrefix);
+    for (const r of fileRoutes) {
+      const relFile = path.relative(targetDir, r.file);
+      if (!isRouteIgnored(r.fullRoute, relFile, ignorePatterns)) {
+        results.push(r);
+      }
+    }
+  }
   return results;
 }
 
-function parseFileRoutes(filePath: string, secretKey: string, testCorpus: string): AnalyzedRoute[] {
+function parseFileRoutes(
+  filePath: string,
+  secretKey: string,
+  testCorpus: string,
+  autoDetectedPrefix: string
+): AnalyzedRoute[] {
   const rawContent = fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, '');
   const lines = rawContent.split(/\r?\n/);
   const routes: AnalyzedRoute[] = [];
 
   const prefixMatch = rawContent.match(/\/\/\s*@(?:stelfid|aegis)-prefix\s+([^\s]+)/i);
-  const activePrefix = prefixMatch ? prefixMatch[1].trim() : '';
+  const annotatedPrefix = prefixMatch ? prefixMatch[1].trim() : '';
+  const activePrefix = annotatedPrefix || autoDetectedPrefix;
+  const prefixSource: 'auto-mount' | 'annotation' | 'none' = annotatedPrefix
+    ? 'annotation'
+    : (autoDetectedPrefix ? 'auto-mount' : 'none');
 
   const globalFileAuth: string[] = [];
-  const globalUseRegex = /\b(?:app|router)\.use\s*\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*(?:\(|,|\))/g;
+  const globalUseRegex = /\b(?:app|router|[a-zA-Z0-9_$]*Router)\.use\s*\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*(?:\(|,|\))/g;
   let gMatch: RegExpExecArray | null;
   while ((gMatch = globalUseRegex.exec(rawContent)) !== null) {
     const fnName = gMatch[1];
@@ -111,14 +222,13 @@ function parseFileRoutes(filePath: string, secretKey: string, testCorpus: string
     }
   }
 
-  const methodStartRegex = /\b(?:app|router)\.(get|post|put|delete|patch)\s*\(/i;
+  const methodStartRegex = /\b(?:app|router|[a-zA-Z0-9_$]*Router)\.(get|post|put|delete|patch)\s*\(/i;
   const stringLiteralRegex = /^\s*['"`]([^'"`]+)['"`]/;
   let inBlockComment = false;
 
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i];
     const trimmed = rawLine.trim();
-
     if (inBlockComment) {
       if (trimmed.includes('*/')) inBlockComment = false;
       continue;
@@ -146,10 +256,10 @@ function parseFileRoutes(filePath: string, secretKey: string, testCorpus: string
     }
     if (!rawRoute) continue;
 
+    const cleanRaw = rawRoute === '/' ? '' : rawRoute.replace(/^\//, '');
     const fullRoute = activePrefix
-      ? activePrefix.replace(/\/$/, '') + '/' + rawRoute.replace(/^\//, '')
+      ? (cleanRaw ? activePrefix.replace(/\/$/, '') + '/' + cleanRaw : activePrefix)
       : rawRoute;
-
     const hash = hashRoute(method, fullRoute, secretKey);
 
     let endLine = i;
@@ -180,12 +290,16 @@ function parseFileRoutes(filePath: string, secretKey: string, testCorpus: string
     }
 
     const prevLineText = i > 0 ? lines[i - 1] : '';
-    const snippetText = prevLineText + '\n' + lines.slice(i, endLine + 1).join('\n');
+    const prev2LineText = i > 1 ? lines[i - 2] : '';
+    const snippetText = prev2LineText + '\n' + prevLineText + '\n' + lines.slice(i, endLine + 1).join('\n');
 
-    // Directivas de conservacion intencional (@stelfid-keep / @keep-route / @aegis-keep)
     const keepMatch = snippetText.match(/\/\/\s*@(?:stelfid-keep|keep-route|aegis-keep)(?:\s*[:=]?\s*(.*))?$/im);
     const isKeepExempt = Boolean(keepMatch);
     const keepReason = keepMatch ? (keepMatch[1]?.trim() || 'Intentional low-frequency / emergency route') : null;
+
+    const depMatch = snippetText.match(/\/\/\s*@(?:stelfid-deprecated|deprecate-route)(?:\s*[:=]?\s*(.*))?$/im);
+    const isDeprecatedStage = Boolean(depMatch);
+    const sunsetDate = depMatch ? (depMatch[1]?.trim() || 'pending-sunset') : null;
 
     const detectedAuth = new Set<string>(globalFileAuth);
     if (/\/\/\s*@(?:stelfid|aegis)-auth/i.test(snippetText)) {
@@ -193,11 +307,11 @@ function parseFileRoutes(filePath: string, secretKey: string, testCorpus: string
     }
 
     const bodySnippet = lines.slice(i, endLine + 1).join('\n');
-    const headerMatch = bodySnippet.match(/\b(?:app|router)\.(?:get|post|put|delete|patch)\s*\(\s*['"`][^'"`]+['"`]\s*,([\s\S]*)/i);
+    const headerMatch = bodySnippet.match(/\b(?:app|router|[a-zA-Z0-9_$]*Router)\.(?:get|post|put|delete|patch)\s*\(\s*['"`][^'"`]+['"`]\s*,([\s\S]*)/i);
     if (headerMatch) {
       const beforeArrow = headerMatch[1].split('=>')[0] || headerMatch[1];
       const beforeFn = beforeArrow.split(/\bfunction\b/)[0] || beforeArrow;
-      const mwZone = beforeFn.replace(/\(\s*(?:reqert{}request)\b[^)]*\)\s*$/i, '');
+      const mwZone = beforeFn.replace(/\(\s*(?:req|request)\b[^)]*\)\s*$/i, '');
       const ids = mwZone.match(/\b[a-zA-Z_][a-zA-Z0-9_.]*\b/g) || [];
       for (const id of ids) {
         if (!IGNORED_IDENTIFIERS.has(id) && AUTH_KEYWORD_REGEX.test(id)) {
@@ -214,6 +328,7 @@ function parseFileRoutes(filePath: string, secretKey: string, testCorpus: string
       method,
       rawRoute,
       fullRoute,
+      prefixSource,
       line: i + 1,
       endLine: endLine + 1,
       hash,
@@ -221,11 +336,12 @@ function parseFileRoutes(filePath: string, secretKey: string, testCorpus: string
       authMiddlewares: authList,
       isKeepExempt,
       keepReason,
+      isDeprecatedStage,
+      sunsetDate,
       referencedInTests
     });
 
     i = endLine;
   }
-
   return routes;
 }

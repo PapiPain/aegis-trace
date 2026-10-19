@@ -1,6 +1,6 @@
 {
   "name": "m_stelfid-monorepo",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
   "description": "Maiestor Stelfid (@m_stelfid) — API Route Evidence & Safe Retirement Platform",
   "workspaces": [
