@@ -1,0 +1,101 @@
+{
+  "_meta": {
+    "vendor": "Maiestor Stelfid Cluster Aggregator",
+    "schemaVersion": "1.6.4",
+    "environment": "production",
+    "nodeCount": 3,
+    "activeNodes": [
+      "node-prod-1",
+      "node-prod-2",
+      "node-prod-3"
+    ],
+    "observationStartedAt": "2026-09-19T00:00:00.000Z",
+    "lastFlushedAt": "2026-10-19T00:00:00.000Z",
+    "uniqueBatchesProcessed": 9
+  },
+  "routes": {
+    "49c693f339b102c71eacd4dd5a64f5d958951c67d3464eb3cae9ae208749beee": {
+      "calls": 420,
+      "firstSeenAt": "2026-09-19T02:24:00.000Z",
+      "lastSeen": "2026-10-18T21:36:00.000Z",
+      "statusCodes": {
+        "200": 420
+      },
+      "nodeBreakdown": {
+        "node-prod-1": {
+          "calls": 150,
+          "firstSeenAt": "2026-09-19T02:24:00.000Z",
+          "lastSeenAt": "2026-10-18T12:00:00.000Z"
+        },
+        "node-prod-2": {
+          "calls": 140,
+          "firstSeenAt": "2026-09-19T04:48:00.000Z",
+          "lastSeenAt": "2026-10-18T19:12:00.000Z"
+        },
+        "node-prod-3": {
+          "calls": 130,
+          "firstSeenAt": "2026-09-19T07:12:00.000Z",
+          "lastSeenAt": "2026-10-18T21:36:00.000Z"
+        }
+      }
+    },
+    "4cf424e1c623c6ca3ef489f0ea2358ff8579be80d347941e42441ad04adca96d": {
+      "calls": 185,
+      "firstSeenAt": "2026-09-19T12:00:00.000Z",
+      "lastSeen": "2026-10-18T16:48:00.000Z",
+      "statusCodes": {
+        "200": 185
+      },
+      "nodeBreakdown": {
+        "node-prod-1": {
+          "calls": 65,
+          "firstSeenAt": "2026-09-19T12:00:00.000Z",
+          "lastSeenAt": "2026-10-18T02:24:00.000Z"
+        },
+        "node-prod-2": {
+          "calls": 60,
+          "firstSeenAt": "2026-09-20T00:00:00.000Z",
+          "lastSeenAt": "2026-10-18T09:36:00.000Z"
+        },
+        "node-prod-3": {
+          "calls": 60,
+          "firstSeenAt": "2026-09-20T04:48:00.000Z",
+          "lastSeenAt": "2026-10-18T16:48:00.000Z"
+        }
+      }
+    },
+    "c4aacd0a8572ec9543f8952f3bffcc40dc76cd99fda53a77defbb6a3a10d59c6": {
+      "calls": 19,
+      "firstSeenAt": "2026-09-21T00:00:00.000Z",
+      "lastSeen": "2026-10-18T03:36:00.000Z",
+      "statusCodes": {
+        "200": 19
+      },
+      "nodeBreakdown": {
+        "node-prod-1": {
+          "calls": 7,
+          "firstSeenAt": "2026-09-21T00:00:00.000Z",
+          "lastSeenAt": "2026-09-28T04:48:00.000Z"
+        },
+        "node-prod-2": {
+          "calls": 5,
+          "firstSeenAt": "2026-09-30T02:24:00.000Z",
+          "lastSeenAt": "2026-10-08T09:36:00.000Z"
+        },
+        "node-prod-3": {
+          "calls": 7,
+          "firstSeenAt": "2026-10-10T00:00:00.000Z",
+          "lastSeenAt": "2026-10-18T03:36:00.000Z"
+        }
+      }
+    },
+    "efb82eaab7c5564d31b9f023be3bde546ed31d0f01071dc9187b048933f74939": {
+      "calls": 950,
+      "firstSeenAt": "2026-09-21T00:00:00.000Z",
+      "lastSeen": "2026-10-18T03:36:00.000Z",
+      "statusCodes": {
+        "404": 950
+      }
+    }
+  }
+}

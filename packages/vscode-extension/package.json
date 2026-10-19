@@ -2,7 +2,7 @@
   "name": "m-stelfid-vscode",
   "displayName": "Maiestor Stelfid — API Route Evidence & Safe Retirement Auditor",
   "description": "Connect your API code with runtime telemetry to identify unnecessary routes and retire them with evidence, without breaking production.",
-  "version": "1.5.0",
+  "version": "1.7.0-rc.1",
   "publisher": "m-stelfid",
   "license": "MIT",
   "icon": "icon.png",

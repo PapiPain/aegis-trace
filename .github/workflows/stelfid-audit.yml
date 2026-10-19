@@ -1,4 +1,4 @@
-name: Maiestor Stelfid — API Route Evidence Audit
+name: Maiestor Stelfid — RC Certification & Multi-OS CI
 
 on:
   push:
@@ -6,9 +6,16 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
-  stelfid-audit:
-    runs-on: ubuntu-latest
+  stelfid-rc-verification:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -18,10 +25,34 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dependencies & Build Maiestor Stelfid
+      - name: Install dependencies & Build Monorepo
         run: |
           npm install --ignore-scripts
           npm run build
 
-      - name: Run Maiestor Stelfid Route Evidence Auditor
-        run: node packages/cli/dist/index.js --dir apps/test-service
+      - name: Run Transport, Durability & Idempotency Suite
+        run: npm run test:readiness
+
+      - name: Run Auditor Semantics, OWASP Separation & Multi-Node Shadow API Suite
+        run: npm run test:audit-semantics
+
+      - name: Run 5-Point RC Pre-Production Certification (Express Regression, Low-Freq Guard, Gradual Rollout & Rollback)
+        run: npm run test:rc-certification
+
+      - name: Verify Package Distribution Tarballs (Dry-Run)
+        run: |
+          npm pack --workspace=@m_stelfid/node-sdk --dry-run
+          npm pack --workspace=@m_stelfid/cli --dry-run
+
+      - name: Archive Verification & Audit Evidence Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: stelfid-rc-evidence-${{ matrix.os }}-${{ github.sha }}
+          path: |
+            STELFID_PRODUCTION_READINESS_EVIDENCE.json
+            STELFID_PRODUCTION_READINESS_EVIDENCE.md
+            STELFID_AUDIT_EVIDENCE.md
+            STELFID_AUDIT_EVIDENCE.json
+            STELFID_AUDIT_EVIDENCE.csv
+            STELFID_AUDIT_EVIDENCE.sarif.json
+          retention-days: 90

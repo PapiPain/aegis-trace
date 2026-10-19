@@ -2,9 +2,12 @@ export {
   stelfidTelemetry,
   aegisTraceMiddleware,
   aegisTrace,
+  sendBatchWithAbortTimeout,
   StelfidOptions,
-  TelemetryEnvelope,
+  DeltaBatchEnvelope,
+  EmpiricalSyncStats,
   DormantTouchEvent,
-  DeprecatedRoutePolicy
+  DeprecatedRoutePolicy,
+  DeltaPayloadItem
 } from './collector';
 export { generateBlindHash, normalizeRoute } from './crypto';

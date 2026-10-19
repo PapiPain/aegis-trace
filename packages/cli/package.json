@@ -1,6 +1,6 @@
 {
   "name": "@m_stelfid/cli",
-  "version": "1.5.0",
+  "version": "1.7.0-rc.1",
   "description": "Maiestor Stelfid — Evidence-based API route retirement & OWASP API9 surface auditor.",
   "main": "dist/index.js",
   "bin": {

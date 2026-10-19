@@ -1,347 +1,234 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { createHmac } from 'crypto';
+import { generateBlindHash, normalizeRoute } from './crypto';
 
 export type RetirementState =
   | 'ACTIVE'
   | 'EXEMPT_KEEP'
+  | 'LOW_FREQUENCY_PROTECTED'
+  | 'DYNAMIC_OR_PLUGIN_PROTECTED'
   | 'STAGE_DEPRECATED'
   | 'UNOBSERVED_LOW_CONFIDENCE'
-  | 'CANDIDATE_PROTECTED'
-  | 'CANDIDATE_UNAUTHENTICATED';
+  | 'CANDIDATE_FOR_MANUAL_REVIEW';
 
 export interface AnalyzedRoute {
-  file: string;
   method: string;
   rawRoute: string;
   fullRoute: string;
-  prefixSource: 'auto-mount' | 'annotation' | 'none';
+  normalizedRoute: string;
+  prefixSource: 'direct' | 'auto-mount' | 'chained-route' | 'plugin-registered';
+  hash: string;
+  file: string;
   line: number;
   endLine: number;
-  hash: string;
-  isAuthenticated: boolean;
-  authMiddlewares: string[];
   isKeepExempt: boolean;
   keepReason: string | null;
   isDeprecatedStage: boolean;
   sunsetDate: string | null;
+  isAuthenticated: boolean;
+  authMiddlewares: string[];
   referencedInTests: boolean;
+  isLowFrequencyPattern: boolean;
+  lowFrequencyReason: string | null;
+  hasDynamicPattern: boolean;
 }
 
-const AUTH_KEYWORD_REGEX = /(?:auth|jwt|token|guard|protect|session|admin|role|permission|passport|clerk|supabase|bearer|verify|private|secure|logged|requireAuth|isAuthenticated|checkRole|apiKeyAuth)/i;
+const AUTH_PATTERNS = /auth|jwt|bearer|session|guard|protect|passport|clerk|auth0|supabase|verifyToken|requireRole|apiKey|oauth|sso|externalAuth/i;
+const LOW_FREQ_ROUTE_PATTERNS = /(\/webhook|\/webhooks|\/callback|\/callbacks|\/cron|\/scheduled|\/monthly|\/annual|\/quarterly|\/reconcil|\/admin|\/internal|\/backoffice|\/audit-export|\/disaster-recovery|\/migration)/i;
 
-const IGNORED_IDENTIFIERS = new Set([
-  'req', 'res', 'next', 'async', 'await', 'err', 'request', 'response', 'app', 'router',
-  'aegisTrace', 'aegisTraceMiddleware', 'stelfidTelemetry', 'apiKey', 'secretKey', 'express',
-  'json', 'urlencoded', 'cors', 'helmet', 'morgan', 'compression', 'cookieParser', 'rateLimit',
-  'true', 'false', 'null'
-]);
-
-export function normalizeRoute(routePattern: string): string {
-  let normalized = routePattern.trim().toLowerCase();
-  normalized = normalized.replace(/\/+/g, '/');
-  normalized = normalized.replace(/:[a-zA-Z0-9_]+/g, ':param');
-  if (normalized.length > 1 && normalized.endsWith('/')) {
-    normalized = normalized.slice(0, -1);
+function collectFiles(dir: string, out: string[] = []): string[] {
+  if (!fs.existsSync(dir)) return out;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (['node_modules', 'dist', '.git', '.stelfid-backups'].includes(entry.name)) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) collectFiles(full, out);
+    else if (/\.(ts|js|mjs|cjs)$/.test(entry.name)) out.push(full);
   }
-  return normalized.startsWith('/') ? normalized : '/' + normalized;
+  return out;
 }
 
-export function hashRoute(method: string, routePattern: string, secretKey: string): string {
-  const canonical = method.toUpperCase() + ':' + normalizeRoute(routePattern);
-  return createHmac('sha256', secretKey).update(canonical).digest('hex');
-}
+function discoverRouterMounts(files: string[]): Map<string, { prefix: string; globalAuth: string[] }> {
+  const importVarToFile = new Map<string, string>();
+  const fileToMountInfo = new Map<string, { prefix: string; globalAuth: string[] }>();
 
-function loadIgnorePatterns(targetDir: string): string[] {
-  const ignoreFiles = [
-    path.join(targetDir, '.stelfidignore'),
-    path.join(process.cwd(), '.stelfidignore')
-  ];
-  const found = ignoreFiles.find(f => fs.existsSync(f));
-  if (!found) return [];
-  try {
-    return fs.readFileSync(found, 'utf8')
-      .split(/\r?\n/)
-      .map(l => l.trim())
-      .filter(l => l.length > 0 && !l.startsWith('#'));
-  } catch {
-    return [];
-  }
-}
+  for (const file of files) {
+    const content = fs.readFileSync(file, 'utf8');
+    const dir = path.dirname(file);
 
-function isRouteIgnored(fullRoute: string, relFile: string, patterns: string[]): boolean {
-  for (const pat of patterns) {
-    if (fullRoute === pat || fullRoute.startsWith(pat.replace(/\*$/, ''))) return true;
-    if (relFile.replace(/\\/g, '/').includes(pat.replace(/\*$/, ''))) return true;
-  }
-  return false;
-}
-
-function collectTestReferences(targetDir: string): string {
-  const chunks: string[] = [];
-  function walkTests(dir: string) {
-    if (!fs.existsSync(dir)) return;
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (['node_modules', 'dist', '.git'].includes(entry.name)) continue;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walkTests(full);
-      } else if (/\.(test|spec)\.(ts|js)$/i.test(entry.name)) {
-        try { chunks.push(fs.readFileSync(full, 'utf8')); } catch {}
-      }
-    }
-  }
-  walkTests(targetDir);
-  return chunks.join('\n');
-}
-
-function buildCrossFileMountPrefixMap(sourceFiles: string[]): Map<string, string> {
-  const prefixByFile = new Map<string, string>();
-  const resolveImportTarget = (fromFile: string, importSpec: string): string | null => {
-    if (!importSpec.startsWith('.')) return null;
-    const base = path.resolve(path.dirname(fromFile), importSpec);
-    const candidates = [
-      base,
-      base + '.ts',
-      base + '.js',
-      path.join(base, 'index.ts'),
-      path.join(base, 'index.js')
-    ];
-    return candidates.find(c => fs.existsSync(c) && fs.statSync(c).isFile()) || null;
-  };
-
-  for (const file of sourceFiles) {
-    let content = '';
-    try { content = fs.readFileSync(file, 'utf8'); } catch { continue; }
-    const importedVars = new Map<string, string>();
-
-    const esmRegex = /import\s+(?:\*\s+as\s+)?([a-zA-Z0-9_$]+|\{[^{}]+\})\s+from\s+['"]([^'"]+)['"]/g;
+    const impRegex = /(?:import\s+(\w+)\s+from\s+['"]([^'"]+)['"]|const\s+(\w+)\s*=\s*require\(['"]([^'"]+)['"]\))/g;
     let m: RegExpExecArray | null;
-    while ((m = esmRegex.exec(content)) !== null) {
-      const clause = m[1].trim();
-      const spec = m[2].trim();
-      const resolved = resolveImportTarget(file, spec);
-      if (!resolved) continue;
-      if (clause.startsWith('{')) {
-        const names = clause.slice(1, -1).split(',').map(s => s.trim());
-        for (const n of names) {
-          const parts = n.split(/\s+as\s+/i);
-          const localName = (parts[1] || parts[0]).trim();
-          if (localName) importedVars.set(localName, resolved);
+    while ((m = impRegex.exec(content)) !== null) {
+      const varName = m[1] || m[3];
+      const relPath = m[2] || m[4];
+      if (varName && relPath && relPath.startsWith('.')) {
+        for (const ext of ['.ts', '.js', '/index.ts', '/index.js', '']) {
+          const resolved = path.resolve(dir, relPath + ext);
+          if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+            importVarToFile.set(file + '::' + varName, resolved);
+            break;
+          }
         }
-      } else {
-        importedVars.set(clause, resolved);
       }
     }
 
-    const cjsRegex = /(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
-    while ((m = cjsRegex.exec(content)) !== null) {
-      const resolved = resolveImportTarget(file, m[2].trim());
-      if (resolved) importedVars.set(m[1].trim(), resolved);
-    }
-
-    const mountRegex = /\b(?:app|router|[a-zA-Z0-9_$]*Router)\.use\s*\(\s*['"`]([^'"`]+)['"`]\s*,([^;\n]+)\)/g;
-    while ((m = mountRegex.exec(content)) !== null) {
-      const mountPrefix = m[1].trim();
-      const argsPart = m[2];
-      const argIds = argsPart.match(/\b[a-zA-Z_$][a-zA-Z0-9_$]*\b/g) || [];
-      for (const id of argIds) {
-        const targetFile = importedVars.get(id);
-        if (targetFile) {
-          const existingParentPrefix = prefixByFile.get(file) || '';
-          const combined = existingParentPrefix
-            ? existingParentPrefix.replace(/\/$/, '') + '/' + mountPrefix.replace(/^\//, '')
-            : mountPrefix;
-          prefixByFile.set(targetFile, combined);
-        }
+    // Detectar app.use('/prefix', [optionalAuth], routerVar)
+    const useRegex = /\b(?:app|router|server|\w*Router|\w*App)\.use\(\s*['"]([^'"]+)['"]\s*,\s*([^)]+)\)/g;
+    while ((m = useRegex.exec(content)) !== null) {
+      const prefix = m[1];
+      const argsRaw = m[2].split(',').map(s => s.trim()).filter(Boolean);
+      const targetVar = argsRaw[argsRaw.length - 1];
+      const mountAuths = argsRaw.slice(0, -1).filter(a => AUTH_PATTERNS.test(a));
+      const targetFile = importVarToFile.get(file + '::' + targetVar);
+      if (targetFile) {
+        fileToMountInfo.set(targetFile, { prefix, globalAuth: mountAuths });
       }
     }
   }
-  return prefixByFile;
+  return fileToMountInfo;
 }
 
 export function scanDirectoryForRoutes(targetDir: string, secretKey: string): AnalyzedRoute[] {
-  const sourceFiles: string[] = [];
-  const testCorpus = collectTestReferences(targetDir);
-  const ignorePatterns = loadIgnorePatterns(targetDir);
+  const allFiles = collectFiles(targetDir);
+  const testFiles = allFiles.filter(f => /\.(test|spec)\.(ts|js)$/.test(f));
+  const sourceFiles = allFiles.filter(f => !/\.(test|spec)\.(ts|js)$/.test(f));
+  const testCorpus = testFiles.map(f => fs.readFileSync(f, 'utf8')).join('\n');
+  const routerMounts = discoverRouterMounts(sourceFiles);
+  const results: AnalyzedRoute[] = [];
 
-  function walk(currentDir: string) {
-    if (!fs.existsSync(currentDir)) return;
-    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (['node_modules', 'dist', '.git', 'coverage'].includes(entry.name)) continue;
-      const fullPath = path.join(currentDir, entry.name);
-      if (entry.isDirectory()) {
-        walk(fullPath);
-      } else if (/\.(ts|js)$/i.test(entry.name) && !/\.(test|spec|d)\.(ts|js)$/i.test(entry.name)) {
-        sourceFiles.push(path.resolve(fullPath));
+  for (const file of sourceFiles) {
+    const raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
+    const lines = raw.split(/\r?\n/);
+    const mountInfo = routerMounts.get(file);
+    const filePrefix = mountInfo ? mountInfo.prefix : '';
+
+    // Detectar router.use(externalAuthMiddleware) a nivel de archivo
+    const fileLevelAuths: string[] = mountInfo ? [...mountInfo.globalAuth] : [];
+    for (const line of lines) {
+      const routerUseMatch = line.match(/\b(?:router|app)\.use\(\s*([a-zA-Z0-9_$.]+)\s*\)/);
+      if (routerUseMatch && AUTH_PATTERNS.test(routerUseMatch[1])) {
+        if (!fileLevelAuths.includes(routerUseMatch[1])) fileLevelAuths.push(routerUseMatch[1]);
       }
     }
-  }
-  walk(targetDir);
 
-  const autoMountPrefixes = buildCrossFileMountPrefixMap(sourceFiles);
-  const results: AnalyzedRoute[] = [];
-  for (const filePath of sourceFiles) {
-    const autoPrefix = autoMountPrefixes.get(filePath) || '';
-    const fileRoutes = parseFileRoutes(filePath, secretKey, testCorpus, autoPrefix);
-    for (const r of fileRoutes) {
-      const relFile = path.relative(targetDir, r.file);
-      if (!isRouteIgnored(r.fullRoute, relFile, ignorePatterns)) {
-        results.push(r);
+    const isPluginFile = /plugin|extension|addons/i.test(path.basename(file)) || /export\s+function\s+register\w*Plugin/i.test(raw);
+
+    let inBlockComment = false;
+    for (let i = 0; i < lines.length; i++) {
+      const lineText = lines[i];
+      const trimmed = lineText.trim();
+      if (trimmed.startsWith('/*')) inBlockComment = true;
+      if (inBlockComment) {
+        if (trimmed.includes('*/')) inBlockComment = false;
+        continue;
       }
+      if (trimmed.startsWith('//') || trimmed.startsWith('*')) continue;
+
+      // Soportar: app.get('/path', ...) o router.post('/path', [mw1, mw2], ...) o pluginApp.get(...)
+      const stdMatch = lineText.match(/\b(?:app|router|server|\w*Router|\w*App)\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)['"`]\s*(?:,\s*(.+))?$/i);
+      // Soportar: app.route('/path').get(mw, handler)
+      const chainedMatch = !stdMatch ? lineText.match(/\b(?:app|router)\.route\(\s*['"`]([^'"`]+)['"`]\s*\)\.(get|post|put|delete|patch)\((.*)$/i) : null;
+
+      if (!stdMatch && !chainedMatch) continue;
+
+      const method = (stdMatch ? stdMatch[1] : chainedMatch![2]).toUpperCase();
+      const rawRoute = stdMatch ? stdMatch[2] : chainedMatch![1];
+      const restOfCall = (stdMatch ? (stdMatch[3] || '') : (chainedMatch![3] || ''));
+
+      // Determinar bloque completo (inicio a fin del handler)
+      let endLine = i + 1;
+      let parenDepth = 0;
+      for (let j = i; j < lines.length; j++) {
+        for (const ch of lines[j]) {
+          if (ch === '(') parenDepth++;
+          else if (ch === ')') parenDepth--;
+        }
+        if (parenDepth <= 0 && j >= i) {
+          endLine = j + 1;
+          break;
+        }
+      }
+
+      // Recolectar UNICAMENTE lineas de comentario inmediatamente encima de esta ruta
+      // (deteniendose si hay una linea en blanco o codigo de otra ruta previa).
+      const attachedComments: string[] = [];
+      for (let k = i - 1; k >= Math.max(0, i - 5); k--) {
+        const prevTrim = lines[k].trim();
+        if (prevTrim.startsWith('//') || prevTrim.startsWith('/*') || prevTrim.startsWith('*') || prevTrim.endsWith('*/')) {
+          attachedComments.unshift(prevTrim);
+        } else {
+          break;
+        }
+      }
+      const prevWindow = attachedComments.join('\n');
+      // Exigir directiva explicita (evitar falsos positivos como 'SIN @stelfid-keep')
+      const keepMatch = !/\b(?:sin|no|without|not)\s+@(?:stelfid|aegis)-keep/i.test(prevWindow)
+        ? prevWindow.match(/@(?:stelfid|aegis)-keep(?:\s+([^\s*)\]]+))?/i)
+        : null;
+      const depMatch = !/\b(?:sin|no|without|not)\s+@(?:stelfid|aegis)-deprecated/i.test(prevWindow)
+        ? prevWindow.match(/@(?:stelfid|aegis)-deprecated(?:\s+([^\s*)\]]+))?/i)
+        : null;
+
+      // Extraer middlewares de autenticacion (incluyendo callbacks dentro de arrays [mw1, mw2])
+      const blockSnippet = lines.slice(i, Math.min(lines.length, i + 4)).join(' ');
+      const tokens = (restOfCall + ' ' + blockSnippet)
+        .replace(/[\[\]()]/g, ' ')
+        .split(/[\s,]+/)
+        .map(t => t.trim())
+        .filter(Boolean);
+      const detectedAuths = [...fileLevelAuths];
+      for (const tok of tokens) {
+        if (AUTH_PATTERNS.test(tok) && !tok.startsWith('req') && !tok.startsWith('res') && !tok.includes('=>') && !tok.includes('/')) {
+          const cleanTok = tok.replace(/[^a-zA-Z0-9_$.]/g, '');
+          if (cleanTok && !detectedAuths.includes(cleanTok)) detectedAuths.push(cleanTok);
+        }
+      }
+
+      const fullRoute = filePrefix
+        ? (filePrefix.endsWith('/') ? filePrefix.slice(0, -1) : filePrefix) + (rawRoute.startsWith('/') ? rawRoute : '/' + rawRoute)
+        : rawRoute;
+      const normalized = normalizeRoute(fullRoute);
+      const hash = generateBlindHash(method, fullRoute, secretKey);
+
+      // Detectar si es ruta con patron de baja frecuencia (webhook, callback, tarea mensual/anual, admin)
+      const isLowFrequencyPattern = LOW_FREQ_ROUTE_PATTERNS.test(fullRoute);
+      const lowFrequencyReason = isLowFrequencyPattern
+        ? 'Conservative Lexical Path Heuristic (Matches /webhook, /admin, /monthly, /cron — Precautionary guard by route name, NOT runtime evidence of low-frequency usage)'
+        : null;
+
+      // Detectar patrones dinamicos complejos (regex en ruta, comodines *, interpolacion ${})
+      const hasDynamicPattern = /[\*\$\(\)\?]/.test(rawRoute);
+      const prefixSource: AnalyzedRoute['prefixSource'] = isPluginFile
+        ? 'plugin-registered'
+        : chainedMatch
+        ? 'chained-route'
+        : filePrefix
+        ? 'auto-mount'
+        : 'direct';
+
+      const referencedInTests = testCorpus.includes(fullRoute) || testCorpus.includes(rawRoute);
+
+      results.push({
+        method,
+        rawRoute,
+        fullRoute,
+        normalizedRoute: normalized,
+        prefixSource,
+        hash,
+        file,
+        line: i + 1,
+        endLine,
+        isKeepExempt: Boolean(keepMatch),
+        keepReason: keepMatch ? (keepMatch[1] || 'intentional-keep') : null,
+        isDeprecatedStage: Boolean(depMatch),
+        sunsetDate: depMatch ? (depMatch[1] || 'staged') : null,
+        isAuthenticated: detectedAuths.length > 0,
+        authMiddlewares: detectedAuths,
+        referencedInTests,
+        isLowFrequencyPattern,
+        lowFrequencyReason,
+        hasDynamicPattern
+      });
     }
   }
   return results;
-}
-
-function parseFileRoutes(
-  filePath: string,
-  secretKey: string,
-  testCorpus: string,
-  autoDetectedPrefix: string
-): AnalyzedRoute[] {
-  const rawContent = fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, '');
-  const lines = rawContent.split(/\r?\n/);
-  const routes: AnalyzedRoute[] = [];
-
-  const prefixMatch = rawContent.match(/\/\/\s*@(?:stelfid|aegis)-prefix\s+([^\s]+)/i);
-  const annotatedPrefix = prefixMatch ? prefixMatch[1].trim() : '';
-  const activePrefix = annotatedPrefix || autoDetectedPrefix;
-  const prefixSource: 'auto-mount' | 'annotation' | 'none' = annotatedPrefix
-    ? 'annotation'
-    : (autoDetectedPrefix ? 'auto-mount' : 'none');
-
-  const globalFileAuth: string[] = [];
-  const globalUseRegex = /\b(?:app|router|[a-zA-Z0-9_$]*Router)\.use\s*\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*(?:\(|,|\))/g;
-  let gMatch: RegExpExecArray | null;
-  while ((gMatch = globalUseRegex.exec(rawContent)) !== null) {
-    const fnName = gMatch[1];
-    if (!IGNORED_IDENTIFIERS.has(fnName) && AUTH_KEYWORD_REGEX.test(fnName)) {
-      globalFileAuth.push(fnName);
-    }
-  }
-
-  const methodStartRegex = /\b(?:app|router|[a-zA-Z0-9_$]*Router)\.(get|post|put|delete|patch)\s*\(/i;
-  const stringLiteralRegex = /^\s*['"`]([^'"`]+)['"`]/;
-  let inBlockComment = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i];
-    const trimmed = rawLine.trim();
-    if (inBlockComment) {
-      if (trimmed.includes('*/')) inBlockComment = false;
-      continue;
-    }
-    if (trimmed.startsWith('/*')) {
-      if (!trimmed.includes('*/')) inBlockComment = true;
-      continue;
-    }
-    if (trimmed.startsWith('//')) continue;
-
-    const methodMatch = rawLine.match(methodStartRegex);
-    if (!methodMatch) continue;
-
-    const method = methodMatch[1].toUpperCase();
-    const afterParenIndex = (methodMatch.index || 0) + methodMatch[0].length;
-    const restOfFirstLine = rawLine.slice(afterParenIndex);
-
-    let rawRoute: string | null = null;
-    const sameLineRoute = restOfFirstLine.match(stringLiteralRegex);
-    if (sameLineRoute) {
-      rawRoute = sameLineRoute[1];
-    } else if (i + 1 < lines.length) {
-      const nextLineRoute = lines[i + 1].match(stringLiteralRegex);
-      if (nextLineRoute) rawRoute = nextLineRoute[1];
-    }
-    if (!rawRoute) continue;
-
-    const cleanRaw = rawRoute === '/' ? '' : rawRoute.replace(/^\//, '');
-    const fullRoute = activePrefix
-      ? (cleanRaw ? activePrefix.replace(/\/$/, '') + '/' + cleanRaw : activePrefix)
-      : rawRoute;
-    const hash = hashRoute(method, fullRoute, secretKey);
-
-    let endLine = i;
-    let openParens = 0;
-    let started = false;
-    let inString: string | null = null;
-
-    for (let j = i; j < lines.length; j++) {
-      const line = lines[j];
-      for (let k = 0; k < line.length; k++) {
-        const char = line[k];
-        const prevChar = k > 0 ? line[k - 1] : '';
-        if (!inString && char === '/' && line[k + 1] === '/') break;
-        if ((char === "'" || char === '"' || char === '`') && prevChar !== '\\') {
-          if (!inString) inString = char;
-          else if (inString === char) inString = null;
-          continue;
-        }
-        if (!inString) {
-          if (char === '(') { openParens++; started = true; }
-          else if (char === ')') { openParens--; }
-        }
-      }
-      if (started && openParens <= 0) {
-        endLine = j;
-        break;
-      }
-    }
-
-    const prevLineText = i > 0 ? lines[i - 1] : '';
-    const prev2LineText = i > 1 ? lines[i - 2] : '';
-    const snippetText = prev2LineText + '\n' + prevLineText + '\n' + lines.slice(i, endLine + 1).join('\n');
-
-    const keepMatch = snippetText.match(/\/\/\s*@(?:stelfid-keep|keep-route|aegis-keep)(?:\s*[:=]?\s*(.*))?$/im);
-    const isKeepExempt = Boolean(keepMatch);
-    const keepReason = keepMatch ? (keepMatch[1]?.trim() || 'Intentional low-frequency / emergency route') : null;
-
-    const depMatch = snippetText.match(/\/\/\s*@(?:stelfid-deprecated|deprecate-route)(?:\s*[:=]?\s*(.*))?$/im);
-    const isDeprecatedStage = Boolean(depMatch);
-    const sunsetDate = depMatch ? (depMatch[1]?.trim() || 'pending-sunset') : null;
-
-    const detectedAuth = new Set<string>(globalFileAuth);
-    if (/\/\/\s*@(?:stelfid|aegis)-auth/i.test(snippetText)) {
-      detectedAuth.add('@stelfid-auth');
-    }
-
-    const bodySnippet = lines.slice(i, endLine + 1).join('\n');
-    const headerMatch = bodySnippet.match(/\b(?:app|router|[a-zA-Z0-9_$]*Router)\.(?:get|post|put|delete|patch)\s*\(\s*['"`][^'"`]+['"`]\s*,([\s\S]*)/i);
-    if (headerMatch) {
-      const beforeArrow = headerMatch[1].split('=>')[0] || headerMatch[1];
-      const beforeFn = beforeArrow.split(/\bfunction\b/)[0] || beforeArrow;
-      const mwZone = beforeFn.replace(/\(\s*(?:req|request)\b[^)]*\)\s*$/i, '');
-      const ids = mwZone.match(/\b[a-zA-Z_][a-zA-Z0-9_.]*\b/g) || [];
-      for (const id of ids) {
-        if (!IGNORED_IDENTIFIERS.has(id) && AUTH_KEYWORD_REGEX.test(id)) {
-          detectedAuth.add(id);
-        }
-      }
-    }
-
-    const authList = Array.from(detectedAuth);
-    const referencedInTests = testCorpus.includes(rawRoute) || testCorpus.includes(fullRoute);
-
-    routes.push({
-      file: filePath,
-      method,
-      rawRoute,
-      fullRoute,
-      prefixSource,
-      line: i + 1,
-      endLine: endLine + 1,
-      hash,
-      isAuthenticated: authList.length > 0,
-      authMiddlewares: authList,
-      isKeepExempt,
-      keepReason,
-      isDeprecatedStage,
-      sunsetDate,
-      referencedInTests
-    });
-
-    i = endLine;
-  }
-  return routes;
 }

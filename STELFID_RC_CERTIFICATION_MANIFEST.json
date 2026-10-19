@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "1.7.0-rc.1",
+  "generatedAt": "2026-10-19T23:35:17.752Z",
+  "hostPlatform": "win32",
+  "nodeVersion": "v24.18.0",
+  "telemetryDataClassification": "SYNTHETIC_DETERMINISTIC_FIXTURE (Not production traffic evidence)",
+  "liabilityAndSafetyPolicy": "Zero observed hits never triggers automatic code deletion by default. Controlled retirement requires explicit human approval (--approval-manifest), path-jailed SHA-256 backups, and verified rollback.",
+  "allLocalChecksPassed": true,
+  "executedAndPassedChecks": [
+    "POINT_1_EXPRESS_PATTERNS_FIXTURE",
+    "POINT_2_CONSERVATIVE_NAME_HEURISTIC_GUARD",
+    "POINT_3_CONTROLLED_CRASH_AND_IDEMPOTENT_BATCHID_REPLAY",
+    "POINT_4_YAML_AST_WORKFLOW_VALIDATION",
+    "POINT_5_PATH_JAILED_APPROVAL_BACKUP_AND_ROLLBACK"
+  ],
+  "pendingExternalChecks": [
+    "REMOTE_GITHUB_ACTIONS_MATRIX_RUN (Requires git push to execute on remote ubuntu-latest and windows-latest runners)",
+    "REAL_PRODUCTION_STAGING_CANARY_WINDOW (Requires minimum 14-day observation on live staging/production cluster before approving any retirement)"
+  ],
+  "knownScopeBoundaries": [
+    "Express analyzer validates common static and router-mounted patterns; arbitrary dynamic runtime route registration remains protected as manual-review only.",
+    "Name-based route protection (/webhook, /admin, /monthly) is a conservative lexical guard, not empirical proof of invocation frequency.",
+    "Crash test uses controlled process.exit(1) after disk write, not OS kernel panic mid-disk-sector write."
+  ],
+  "diagnostics": {
+    "point1_ExpressRegressionPass": true,
+    "point2_LowFreqZeroHitsProtectedPass": true,
+    "point3_CrashRecovery3PidsPass": true,
+    "point3_CrashDetails": {
+      "valid": true,
+      "simulationScopeNotice": "Controlled process.exit(1) termination after durable disk flush (simulates abrupt process stop, not kernel-level SIGKILL mid-syscall).",
+      "pids": [
+        11284,
+        11936,
+        17624
+      ],
+      "exitCodes": [
+        1,
+        1,
+        0
+      ],
+      "stderrClean": true,
+      "crashesSimulatedCorrectly": true,
+      "batchIdCreatedInProc1": "batch_4027def1-9316-4977-a5f8-97ec25796eb0",
+      "replayedWithSameBatchIdAfter500": true,
+      "dbHitsProgression": [
+        0,
+        5,
+        11
+      ],
+      "sdkPendingBatchesProgression": [
+        1,
+        2,
+        0
+      ],
+      "expectedFinalHits": 11
+    },
+    "observeDidNotTouchCode": true,
+    "approvedFilesMatchExpectedSet": true,
+    "nonTargetFilesUntouched": true,
+    "approvedWasPruned": true,
+    "unapprovedWasUntouched": true,
+    "webhookStillUntouched": true,
+    "monthlyStillUntouched": true,
+    "backupManifestValid": true,
+    "pathEscapeBlocked": true,
+    "rollbackRestoredExactContent": true,
+    "point4_CiValidation": {
+      "valid": true,
+      "parsedWithRealYamlAst": true,
+      "isReadOnlyPermissions": true,
+      "hasUbuntuInMatrix": true,
+      "hasWindowsInMatrix": true,
+      "usesMatrixRunner": true,
+      "requiredCommandsPresent": true,
+      "localHostPlatformVerified": "win32",
+      "remoteGitHubActionsMatrixExecution": "PENDING_REMOTE_CI_RUN (Local test validates YAML AST & runs suite on win32; Linux+Windows matrix executes on git push)"
+    },
+    "point5_GradualRolloutAndRollbackPass": true
+  }
+}

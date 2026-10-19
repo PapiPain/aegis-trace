@@ -1,0 +1,79 @@
+{
+  "suite": "Maiestor Stelfid Production Readiness Checklist (v1.7.0-rc.1)",
+  "executedAt": "2026-10-19T23:35:13.959Z",
+  "checks": {
+    "check1_idempotency_5x_persisted_in_db": {
+      "batch_id": "batch_check1_5x_db_verify",
+      "attempts_sent": 5,
+      "persisted_db_counter_initial": 0,
+      "persisted_db_counter_final": 10,
+      "persisted_unique_batches_in_db": 1,
+      "passed": true
+    },
+    "check2_isolated_post_commit_http500_db_verified": {
+      "sdk_treated_http500_as_failure": true,
+      "persisted_db_calls_immediately_after_post_commit_500": 10,
+      "sdk_retry_succeeded": true,
+      "persisted_db_calls_after_retry": 10,
+      "expected_persisted_db_calls": 10,
+      "passed": true
+    },
+    "check3_abort_controller_real_cancellation": {
+      "configured_timeout_ms": 120,
+      "simulated_server_latency_ms": 500,
+      "measured_client_abort_ms": 128,
+      "aborted_by_timeout_confirmed": true,
+      "passed": true
+    },
+    "check4_flush_vs_http_requests_explanation": {
+      "mechanism": "When a flush fails (e.g. HTTP 500), Batch #1 remains in sealedBatchQueue. New hits arriving before the next flush are sealed into Batch #2. On the next single flush_sent_http cycle, the FIFO loop sends 2 sequential HTTP requests (1 retry for Batch #1 + 1 new request for Batch #2).",
+      "breakdown": [
+        "Flush #1 (Pre-Commit 500): 1 batch in queue -> 1 HTTP request sent (Failed)",
+        "Flush #2 (Recovery + New): 2 batches in queue -> 2 HTTP requests sent (Both 200 OK)",
+        "Flush #3 (Post-Commit 500): 1 batch in queue -> 1 HTTP request sent (Failed HTTP 500)",
+        "Flush #4 (Recovery + New): 2 batches in queue -> 2 HTTP requests sent (1 Idempotent 200 OK + 1 New 200 OK)"
+      ],
+      "total_flushes_sending_http": 4,
+      "total_http_requests_sent": 6,
+      "passed": true
+    },
+    "check5_process_restart_durable_queue_recovery": {
+      "pids_executed": [
+        23052,
+        21916,
+        468
+      ],
+      "distinct_os_processes": true,
+      "queued_batches_persisted_on_disk_before_restart": 1,
+      "persisted_batch_id_recovered": "batch_34f14e5f-662b-4734-9d19-4026cec4010f",
+      "db_calls_while_unconfirmed_500": 0,
+      "reconstructed_batch_id_in_proc2": "batch_34f14e5f-662b-4734-9d19-4026cec4010f",
+      "acked_batch_id_in_proc2": "batch_34f14e5f-662b-4734-9d19-4026cec4010f",
+      "queued_batches_remaining_after_recovery": 0,
+      "unsealed_deltas_remaining_on_disk": 0,
+      "persisted_db_calls_after_proc2_recovery": 7,
+      "persisted_db_calls_after_proc3_second_restart": 7,
+      "expected_db_calls": 7,
+      "passed": true
+    },
+    "check6_concurrency_and_zero_delta_savings": {
+      "total_hits_emitted_under_concurrency": 10,
+      "persisted_db_calls_final": 10,
+      "flush_attempts": 8,
+      "flush_sent_http": 2,
+      "flush_skipped_zero_delta": 6,
+      "http_requests_sent": 2,
+      "measured_savings_pct": 75,
+      "passed": true
+    },
+    "check7_zero_pii_and_no_plaintext_routes": {
+      "tested_plaintext_route": "/api/v1/users/profile-secret",
+      "tested_sensitive_query_param": "token=super_secret_jwt_123",
+      "stored_blind_hmac_hash": "ded257645e3f135bb22c6a55501cbec6fa276c318bc681571c67548d043c71f0",
+      "leaked_tokens_in_sdk_storage": 0,
+      "leaked_tokens_in_db_storage": 0,
+      "passed": true
+    }
+  },
+  "all_checks_passed": true
+}

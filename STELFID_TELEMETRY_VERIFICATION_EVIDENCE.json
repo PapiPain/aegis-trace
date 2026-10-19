@@ -1,0 +1,91 @@
+{
+  "vendor": "Maiestor Stelfid Labs",
+  "version": "1.6.2",
+  "executedAt": "2026-10-19T21:38:29.893Z",
+  "tests": {
+    "test1_idempotency_5x": {
+      "description": "Same batch (+10 hits) sent 5 times to server with unique batch_id constraint",
+      "batch_id": "batch_repro_test1_idempotency_5x",
+      "initial_counter": 0,
+      "final_counter": 10,
+      "expected_counter": 10,
+      "batches_received_by_server": 5,
+      "batches_applied_once": 1,
+      "batches_idempotent_replayed": 4,
+      "passed": true
+    },
+    "test2a_http500_pre_commit_additive": {
+      "description": "HTTP 500 before DB commit (3 hits) + 2 new concurrent hits + retry recovery",
+      "initial_counter": 10,
+      "final_counter": 15,
+      "expected_counter": 15,
+      "first_flush_failed_as_expected": true,
+      "retry_flush_succeeded": true,
+      "passed": true
+    },
+    "test2b_http500_post_commit_idempotent_recovery": {
+      "description": "Server applies batch (+4 hits) then fails with HTTP 500; 3 new hits arrive; retry must NOT double-count the +4 batch",
+      "initial_counter": 15,
+      "counter_immediately_after_post_commit_500": 19,
+      "final_counter_after_retry_and_new_hits": 22,
+      "expected_final_counter": 22,
+      "would_have_been_if_double_counted": 26,
+      "post_commit_500_detected_as_failure_by_sdk": true,
+      "recovery_flush_succeeded": true,
+      "passed": true
+    },
+    "test3_abort_controller_timeout": {
+      "description": "AbortController cancels slow HTTP request at configured timeout threshold",
+      "configured_timeout_ms": 120,
+      "simulated_server_delay_ms": 500,
+      "measured_elapsed_ms": 126,
+      "cancellation_confirmed": true,
+      "request_marked_failed": true,
+      "passed": true
+    },
+    "test4_empirical_zero_delta_savings": {
+      "formula": "Ahorro (%) = (flush_skipped_zero_delta / (flush_skipped_zero_delta + flush_sent_http)) * 100",
+      "flush_attempts": 16,
+      "flush_sent_http": 4,
+      "flush_skipped_zero_delta": 12,
+      "http_requests_sent": 6,
+      "calculated_savings_pct": 75,
+      "formula_verification_pct": 75,
+      "passed": true
+    }
+  },
+  "ledger_summary": {
+    "initial_route_counter": 0,
+    "final_route_counter": 22,
+    "server_batches_received": 11,
+    "server_batches_applied": 5,
+    "server_batches_rejected": 2,
+    "server_batches_idempotent_replayed": 5,
+    "sdk_batches_retried": 4,
+    "sdk_idempotent_replays_acked": 1,
+    "processed_batch_ids": [
+      "batch_repro_test1_idempotency_5x",
+      "batch_7a304c59-e66e-4401-98ef-6f62f9760205",
+      "batch_8627ad8a-6868-41da-854b-02a364b30d8a",
+      "batch_10d7b655-6459-44a4-9095-1df6fe62fb1c",
+      "batch_e6724a30-1aa1-4e14-9499-1fa177f0dec4"
+    ],
+    "replayed_batch_ids": [
+      "batch_repro_test1_idempotency_5x",
+      "batch_repro_test1_idempotency_5x",
+      "batch_repro_test1_idempotency_5x",
+      "batch_repro_test1_idempotency_5x",
+      "batch_10d7b655-6459-44a4-9095-1df6fe62fb1c"
+    ],
+    "rejected_batch_ids": [
+      "batch_7a304c59-e66e-4401-98ef-6f62f9760205",
+      "batch_10d7b655-6459-44a4-9095-1df6fe62fb1c"
+    ],
+    "sdk_acked_batch_ids": [
+      "batch_7a304c59-e66e-4401-98ef-6f62f9760205",
+      "batch_8627ad8a-6868-41da-854b-02a364b30d8a",
+      "batch_10d7b655-6459-44a4-9095-1df6fe62fb1c",
+      "batch_e6724a30-1aa1-4e14-9499-1fa177f0dec4"
+    ]
+  }
+}

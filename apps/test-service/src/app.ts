@@ -40,8 +40,7 @@ app.get('/api/legacy/export-v1', (_req, res) => {
   res.json({ deprecated: true, warning: 'Migrar a v2' });
 });
 
-/* [Maiestor Stelfid Safe-Retirement: DELETE /api/admin/purge-cache - 2026-10-19T06:07:52.307Z]
-app.delete('/api/admin/purge-cache', (_req, res) => {
+/* [Maiestor Stelfid Safe-Retirement: DELETE /api/admin/purge-cache - 2026-10-19T06:07:52.307Z]// app.delete('/api/admin/purge-cache', (req, res) => res.status(204).send());
   res.json({ status: 'purged' });
 });
 */

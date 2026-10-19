@@ -1,24 +1,55 @@
 {
   "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
   "version": "2.1.0",
+  "properties": {
+    "integritySha256": "d9ac8a93e6aab26018012e43390c1505146f66b81fd3da0719f25d2bbf26af47",
+    "integrityVerification": {
+      "algorithm": "SHA-256",
+      "digestHex": "d9ac8a93e6aab26018012e43390c1505146f66b81fd3da0719f25d2bbf26af47",
+      "canonicalInputField": "canonicalIntegrityPayload",
+      "howToVerifyCommand": "node -e \"const crypto=require('crypto'),fs=require('fs'),r=JSON.parse(fs.readFileSync('STELFID_AUDIT_EVIDENCE.json','utf8'));console.log(crypto.createHash('sha256').update(JSON.stringify(r.canonicalIntegrityPayload),'utf8').digest('hex')===r.integritySha256 ? 'VALID_INTEGRITY' : 'TAMPERED');\"",
+      "trustBoundaryNotice": "This SHA-256 digest guarantees post-generation data integrity. It does NOT prove creator identity; sign in CI with Sigstore/GPG for provenance.",
+      "semanticWarning": "IMPORTANT: Zero observed hits in a verified window demonstrates absence of observed traffic under those conditions; it does NOT automatically prove absence of external dependencies or future business need.",
+      "liabilityAndSafetyNotice": "OPERATOR RESPONSIBILITY NOTICE: Maiestor Stelfid provides decision-support evidence only. Heuristic path guards (/webhook, /admin, /cron) are conservative lexical filters, NOT empirical frequency proofs. Code modification requires explicit human approval (--approval-manifest) and verified local backups. The user/operator assumes full responsibility for reviewing and approving any endpoint retirement."
+    },
+    "summary": {
+      "totalEndpointsScanned": 6,
+      "activeEndpoints": 2,
+      "exemptKeepEndpoints": 1,
+      "lowFrequencyProtectedEndpoints": 0,
+      "dynamicOrPluginProtectedEndpoints": 0,
+      "stagedDeprecatedObserveOnlyEndpoints": 1,
+      "unobservedLowConfidenceEndpoints": 0,
+      "candidatesForManualReview": 2,
+      "eligibleForControlledPruneWithApproval": 2,
+      "publicEndpointsRequiringAuthReview": 5,
+      "shadowApisDetected": 1
+    }
+  },
   "runs": [
     {
       "tool": {
         "driver": {
           "name": "Maiestor Stelfid",
-          "version": "1.5.0",
+          "version": "1.7.0-rc.1",
           "informationUri": "https://github.com/PapiPain/maiestor-stelfid",
           "rules": [
             {
-              "id": "OWASP-API9-UNAUTH-UNOBSERVED",
+              "id": "OWASP-API9-INVENTORY-LIFECYCLE",
               "shortDescription": {
-                "text": "Unauthenticated & Unobserved API Route (OWASP API9:2023)"
+                "text": "OWASP API9:2023 Improper Inventory Management"
               }
             },
             {
-              "id": "STELFID-RETIREMENT-CANDIDATE",
+              "id": "OWASP-API2-AUTH-COVERAGE-REVIEW",
               "shortDescription": {
-                "text": "Unused API Route Candidate for Safe Retirement"
+                "text": "OWASP API2:2023 Broken Authentication Review"
+              }
+            },
+            {
+              "id": "OWASP-API9-SHADOW-ENDPOINT",
+              "shortDescription": {
+                "text": "OWASP API9:2023 Undocumented Shadow API"
               }
             }
           ]
@@ -26,10 +57,14 @@
       },
       "results": [
         {
-          "ruleId": "OWASP-API9-UNAUTH-UNOBSERVED",
-          "level": "warning",
+          "ruleId": "OWASP-API2-AUTH-COVERAGE-REVIEW",
+          "level": "note",
           "message": {
-            "text": "GET /api/users — Unobserved [Low Retirement Confidence - Env: local (0.0d observed)]"
+            "text": "[AUTH_REVIEW] GET /api/users — No Auth Middleware Detected (Verify if public by design or review OWASP API2:2023)"
+          },
+          "properties": {
+            "state": "ACTIVE",
+            "isAuthenticated": false
           },
           "locations": [
             {
@@ -46,10 +81,14 @@
           ]
         },
         {
-          "ruleId": "OWASP-API9-UNAUTH-UNOBSERVED",
-          "level": "warning",
+          "ruleId": "OWASP-API2-AUTH-COVERAGE-REVIEW",
+          "level": "note",
           "message": {
-            "text": "GET /api/users/:id — Unobserved [Low Retirement Confidence - Env: local (0.0d observed)]"
+            "text": "[AUTH_REVIEW] GET /api/users/:id — No Auth Middleware Detected (Verify if public by design or review OWASP API2:2023)"
+          },
+          "properties": {
+            "state": "ACTIVE",
+            "isAuthenticated": false
           },
           "locations": [
             {
@@ -66,10 +105,16 @@
           ]
         },
         {
-          "ruleId": "OWASP-API9-UNAUTH-UNOBSERVED",
+          "ruleId": "OWASP-API9-INVENTORY-LIFECYCLE",
           "level": "warning",
           "message": {
-            "text": "POST /api/users — Unobserved [Low Retirement Confidence - Env: local (0.0d observed)]"
+            "text": "[CANDIDATE_FOR_MANUAL_REVIEW] POST /api/users (hits=0, controlledPruneEligible=true) — Candidate for Manual Review [OWASP API9:2023 Inventory — 0 Observed Hits in Window — Eligible ONLY in Controlled-Prune with Backup/Approval (Absence of traffic != proof of no future need)]"
+          },
+          "properties": {
+            "state": "CANDIDATE_FOR_MANUAL_REVIEW",
+            "hits": 0,
+            "canAutoPrune": true,
+            "owaspLifecycleTag": "OWASP_API9_RETIREMENT_CANDIDATE"
           },
           "locations": [
             {
@@ -86,10 +131,40 @@
           ]
         },
         {
-          "ruleId": "OWASP-API9-UNAUTH-UNOBSERVED",
+          "ruleId": "OWASP-API2-AUTH-COVERAGE-REVIEW",
+          "level": "note",
+          "message": {
+            "text": "[AUTH_REVIEW] POST /api/users — No Auth Middleware Detected (Verify if public by design or review OWASP API2:2023)"
+          },
+          "properties": {
+            "state": "CANDIDATE_FOR_MANUAL_REVIEW",
+            "isAuthenticated": false
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "apps\\test-service\\src\\app.ts"
+                },
+                "region": {
+                  "startLine": 30,
+                  "endLine": 32
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "OWASP-API9-INVENTORY-LIFECYCLE",
           "level": "warning",
           "message": {
-            "text": "GET /api/legacy/export-v1 — Unobserved [Low Retirement Confidence - Env: local (0.0d observed)]"
+            "text": "[CANDIDATE_FOR_MANUAL_REVIEW] GET /api/legacy/export-v1 (hits=0, controlledPruneEligible=true) — Candidate for Manual Review [OWASP API9:2023 Inventory — 0 Observed Hits in Window — Eligible ONLY in Controlled-Prune with Backup/Approval (Absence of traffic != proof of no future need)]"
+          },
+          "properties": {
+            "state": "CANDIDATE_FOR_MANUAL_REVIEW",
+            "hits": 0,
+            "canAutoPrune": true,
+            "owaspLifecycleTag": "OWASP_API9_RETIREMENT_CANDIDATE"
           },
           "locations": [
             {
@@ -106,10 +181,40 @@
           ]
         },
         {
-          "ruleId": "STELFID-RETIREMENT-CANDIDATE",
+          "ruleId": "OWASP-API2-AUTH-COVERAGE-REVIEW",
           "level": "note",
           "message": {
-            "text": "GET /api/v2/billing/invoices-legacy-xml — Staged Deprecation [Observe-Only Canary / Sunset: sunset=2026-12-31]"
+            "text": "[AUTH_REVIEW] GET /api/legacy/export-v1 — No Auth Middleware Detected (Verify if public by design or review OWASP API2:2023)"
+          },
+          "properties": {
+            "state": "CANDIDATE_FOR_MANUAL_REVIEW",
+            "isAuthenticated": false
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "apps\\test-service\\src\\app.ts"
+                },
+                "region": {
+                  "startLine": 39,
+                  "endLine": 41
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "OWASP-API9-INVENTORY-LIFECYCLE",
+          "level": "note",
+          "message": {
+            "text": "[STAGE_DEPRECATED] GET /api/v2/billing/invoices-legacy-xml (hits=0, controlledPruneEligible=false) — Observe-Only Canary [Sunset: staged — Protected from Automated Retirement]"
+          },
+          "properties": {
+            "state": "STAGE_DEPRECATED",
+            "hits": 0,
+            "canAutoPrune": false,
+            "owaspLifecycleTag": "OWASP_API9_STAGED_DEPRECATION"
           },
           "locations": [
             {
@@ -124,6 +229,44 @@
               }
             }
           ]
+        },
+        {
+          "ruleId": "OWASP-API2-AUTH-COVERAGE-REVIEW",
+          "level": "note",
+          "message": {
+            "text": "[AUTH_REVIEW] GET /api/v2/billing/invoices-legacy-xml — No Auth Middleware Detected (Verify if public by design or review OWASP API2:2023)"
+          },
+          "properties": {
+            "state": "STAGE_DEPRECATED",
+            "isAuthenticated": false
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "apps\\test-service\\src\\routes\\billing.ts"
+                },
+                "region": {
+                  "startLine": 15,
+                  "endLine": 17
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "OWASP-API9-SHADOW-ENDPOINT",
+          "level": "warning",
+          "message": {
+            "text": "[SHADOW_API] BlindHash=c4aacd0a8572ec9543f8952f3bffcc40dc76cd99fda53a77defbb6a3a10d59c6 observed 19 hits across 3 node(s) over 27.15 days"
+          },
+          "properties": {
+            "state": "SHADOW_API",
+            "calls": 19,
+            "firstSeenAt": "2026-09-21T00:00:00.000Z",
+            "lastSeenAt": "2026-10-18T03:36:00.000Z",
+            "observedSpanDays": 27.15
+          }
         }
       ]
     }
