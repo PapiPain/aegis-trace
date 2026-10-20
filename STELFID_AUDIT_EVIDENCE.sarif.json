@@ -2,10 +2,10 @@
   "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
   "version": "2.1.0",
   "properties": {
-    "integritySha256": "d9ac8a93e6aab26018012e43390c1505146f66b81fd3da0719f25d2bbf26af47",
+    "integritySha256": "081ff115c16f1624952dc59c39f2ec1bc96ecf9de84c16a38c83d29a7cad3e3a",
     "integrityVerification": {
       "algorithm": "SHA-256",
-      "digestHex": "d9ac8a93e6aab26018012e43390c1505146f66b81fd3da0719f25d2bbf26af47",
+      "digestHex": "081ff115c16f1624952dc59c39f2ec1bc96ecf9de84c16a38c83d29a7cad3e3a",
       "canonicalInputField": "canonicalIntegrityPayload",
       "howToVerifyCommand": "node -e \"const crypto=require('crypto'),fs=require('fs'),r=JSON.parse(fs.readFileSync('STELFID_AUDIT_EVIDENCE.json','utf8'));console.log(crypto.createHash('sha256').update(JSON.stringify(r.canonicalIntegrityPayload),'utf8').digest('hex')===r.integritySha256 ? 'VALID_INTEGRITY' : 'TAMPERED');\"",
       "trustBoundaryNotice": "This SHA-256 digest guarantees post-generation data integrity. It does NOT prove creator identity; sign in CI with Sigstore/GPG for provenance.",

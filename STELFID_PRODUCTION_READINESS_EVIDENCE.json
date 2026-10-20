@@ -1,6 +1,6 @@
 {
   "suite": "Maiestor Stelfid Production Readiness Checklist (v1.7.0-rc.1)",
-  "executedAt": "2026-10-19T23:41:14.149Z",
+  "executedAt": "2026-10-20T00:08:17.941Z",
   "checks": {
     "check1_idempotency_5x_persisted_in_db": {
       "batch_id": "batch_check1_5x_db_verify",
@@ -21,7 +21,7 @@
     "check3_abort_controller_real_cancellation": {
       "configured_timeout_ms": 120,
       "simulated_server_latency_ms": 500,
-      "measured_client_abort_ms": 124,
+      "measured_client_abort_ms": 126,
       "aborted_by_timeout_confirmed": true,
       "passed": true
     },
@@ -39,16 +39,16 @@
     },
     "check5_process_restart_durable_queue_recovery": {
       "pids_executed": [
-        6784,
-        20152,
-        13124
+        19952,
+        17832,
+        1792
       ],
       "distinct_os_processes": true,
       "queued_batches_persisted_on_disk_before_restart": 1,
-      "persisted_batch_id_recovered": "batch_a6dccdcd-800d-4189-a097-400b419bd59a",
+      "persisted_batch_id_recovered": "batch_4656750c-b37e-45d3-9f80-bdefc330925f",
       "db_calls_while_unconfirmed_500": 0,
-      "reconstructed_batch_id_in_proc2": "batch_a6dccdcd-800d-4189-a097-400b419bd59a",
-      "acked_batch_id_in_proc2": "batch_a6dccdcd-800d-4189-a097-400b419bd59a",
+      "reconstructed_batch_id_in_proc2": "batch_4656750c-b37e-45d3-9f80-bdefc330925f",
+      "acked_batch_id_in_proc2": "batch_4656750c-b37e-45d3-9f80-bdefc330925f",
       "queued_batches_remaining_after_recovery": 0,
       "unsealed_deltas_remaining_on_disk": 0,
       "persisted_db_calls_after_proc2_recovery": 7,

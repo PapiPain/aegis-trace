@@ -2,11 +2,11 @@
 
 > **Critical Safety Notice:** IMPORTANT: Zero observed hits in a verified window demonstrates absence of observed traffic under those conditions; it does NOT automatically prove absence of external dependencies or future business need.
 
-- **Generated At:** `2026-10-19T23:41:15.946Z`
+- **Generated At:** `2026-10-20T00:08:19.812Z`
 - **Engine Version:** `@m_stelfid/cli@1.7.0-rc.1`
 - **Environment & Node Coverage:** `PRODUCTION` (`3 nodes`, Coverage Verified: `true`)
 - **Observation Window:** `30.00 days` (Min threshold: `14 days`, Window Verified: `true`)
-- **Canonical Payload Integrity (SHA-256):** `d9ac8a93e6aab26018012e43390c1505146f66b81fd3da0719f25d2bbf26af47`
+- **Canonical Payload Integrity (SHA-256):** `081ff115c16f1624952dc59c39f2ec1bc96ecf9de84c16a38c83d29a7cad3e3a`
 
 ## 1. Canonical Summary (Identical Across MD, JSON, CSV, SARIF)
 

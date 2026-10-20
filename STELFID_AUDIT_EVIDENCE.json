@@ -1,11 +1,11 @@
 {
   "vendor": "Maiestor Stelfid Labs",
   "engine": "@m_stelfid/cli@1.7.0-rc.1",
-  "generatedAt": "2026-10-19T23:41:15.946Z",
-  "integritySha256": "d9ac8a93e6aab26018012e43390c1505146f66b81fd3da0719f25d2bbf26af47",
+  "generatedAt": "2026-10-20T00:08:19.812Z",
+  "integritySha256": "081ff115c16f1624952dc59c39f2ec1bc96ecf9de84c16a38c83d29a7cad3e3a",
   "integrityVerification": {
     "algorithm": "SHA-256",
-    "digestHex": "d9ac8a93e6aab26018012e43390c1505146f66b81fd3da0719f25d2bbf26af47",
+    "digestHex": "081ff115c16f1624952dc59c39f2ec1bc96ecf9de84c16a38c83d29a7cad3e3a",
     "canonicalInputField": "canonicalIntegrityPayload",
     "howToVerifyCommand": "node -e \"const crypto=require('crypto'),fs=require('fs'),r=JSON.parse(fs.readFileSync('STELFID_AUDIT_EVIDENCE.json','utf8'));console.log(crypto.createHash('sha256').update(JSON.stringify(r.canonicalIntegrityPayload),'utf8').digest('hex')===r.integritySha256 ? 'VALID_INTEGRITY' : 'TAMPERED');\"",
     "trustBoundaryNotice": "This SHA-256 digest guarantees post-generation data integrity. It does NOT prove creator identity; sign in CI with Sigstore/GPG for provenance.",
@@ -29,6 +29,24 @@
       "eligibleForControlledPruneWithApproval": 2,
       "publicEndpointsRequiringAuthReview": 5,
       "shadowApisDetected": 1
+    },
+    "telemetrySourceClassification": "SYNTHETIC_OR_OBSERVED_TELEMETRY",
+    "executiveQuestionsAnswered": {
+      "q1_existingCodeInventory": {
+        "totalStaticRoutes": 6,
+        "authenticatedRoutes": 1,
+        "publicRoutesRequiringApi2Review": 5
+      },
+      "q2_runtimeTrafficAndShadowApis": {
+        "documentedActiveRoutes": 2,
+        "undocumentedShadowApisInRuntime": 1
+      },
+      "q3_safeRetirementWithRollback": {
+        "eligibleWithHumanApprovalAndBackup": 2,
+        "protectedRoutesBlockedFromPrune": 2,
+        "requiresApprovalManifest": true,
+        "supportsSha256VerifiedRollback": true
+      }
     },
     "endpoints": [
       {
@@ -104,6 +122,7 @@
   },
   "disclaimer": "IMPORTANT: Zero observed hits in a verified window demonstrates absence of observed traffic under those conditions; it does NOT automatically prove absence of external dependencies or future business need.",
   "telemetryContext": {
+    "telemetrySourceClassification": "LIVE_RUNTIME_TELEMETRY",
     "environment": "production",
     "nodeCount": 3,
     "expectedMinNodes": 3,

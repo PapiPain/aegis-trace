@@ -47,3 +47,4 @@ jobs:
         run: |
           npm pack --workspace=@m_stelfid/node-sdk --dry-run
           npm pack --workspace=@m_stelfid/cli --dry-run
+          node scripts/release-gate-check.js

@@ -22,6 +22,7 @@ export interface ShadowApiEntry {
 }
 
 export interface TelemetryContext {
+  telemetrySourceClassification?: string;
   environment: string;
   nodeCount: number;
   expectedMinNodes: number;
@@ -221,6 +222,24 @@ export function buildCanonicalIntegrityPayload(
     nodeCount: ctx.nodeCount,
     observationDays: Number(ctx.observationDays.toFixed(4)),
     summary,
+    telemetrySourceClassification: 'SYNTHETIC_OR_OBSERVED_TELEMETRY',
+    executiveQuestionsAnswered: {
+      q1_existingCodeInventory: {
+        totalStaticRoutes: summary.totalEndpointsScanned,
+        authenticatedRoutes: summary.totalEndpointsScanned - summary.publicEndpointsRequiringAuthReview,
+        publicRoutesRequiringApi2Review: summary.publicEndpointsRequiringAuthReview
+      },
+      q2_runtimeTrafficAndShadowApis: {
+        documentedActiveRoutes: summary.activeEndpoints,
+        undocumentedShadowApisInRuntime: summary.shadowApisDetected
+      },
+      q3_safeRetirementWithRollback: {
+        eligibleWithHumanApprovalAndBackup: summary.eligibleForControlledPruneWithApproval,
+        protectedRoutesBlockedFromPrune: summary.exemptKeepEndpoints + summary.lowFrequencyProtectedEndpoints + summary.dynamicOrPluginProtectedEndpoints + summary.stagedDeprecatedObserveOnlyEndpoints,
+        requiresApprovalManifest: true,
+        supportsSha256VerifiedRollback: true
+      }
+    },
     endpoints: evaluated.map(r => ({
       method: r.method,
       fullRoute: r.fullRoute,
@@ -288,6 +307,12 @@ export function printEvidenceReport(evaluated: EvaluatedRoute[], ctx: TelemetryC
   }
 
   console.log('\n--------------------------------------------------------------------------------');
+  const protectedCount = summary.exemptKeepEndpoints + summary.lowFrequencyProtectedEndpoints + summary.dynamicOrPluginProtectedEndpoints + summary.stagedDeprecatedObserveOnlyEndpoints;
+  console.log(' MAIESTOR STELFID — 3 CORE EXECUTIVE ANSWERS:');
+  console.log(`   1. What endpoints actually exist in code?        : ${summary.totalEndpointsScanned} static routes scanned (${summary.totalEndpointsScanned - summary.publicEndpointsRequiringAuthReview} auth-guarded, ${summary.publicEndpointsRequiringAuthReview} public/review OWASP API2)`);
+  console.log(`   2. Which receive traffic (including undocumented)?: ${summary.activeEndpoints} documented active in runtime + ${summary.shadowApisDetected} undocumented Shadow API(s) (OWASP API9)`);
+  console.log(`   3. What can be retired safely with rollback?     : ${summary.eligibleForControlledPruneWithApproval} eligible for approved retirement (w/ SHA-256 backup & --rollback) | ${protectedCount} protected from retirement`);
+  console.log('--------------------------------------------------------------------------------');
   console.log(' CANONICAL EVIDENCE SUMMARY (v1.7.0-rc.1 — Safe Gradual Rollout):');
   console.log('    * Total Static Endpoints Scanned               : ' + summary.totalEndpointsScanned);
   console.log('    * Active in Runtime                            : ' + summary.activeEndpoints);

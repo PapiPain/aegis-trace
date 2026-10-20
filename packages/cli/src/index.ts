@@ -67,6 +67,7 @@ function loadTelemetryWithShadowDetection(
   const knownStaticHashes = new Set<string>(scannedRoutes.map(r => r.hash));
   const map = new Map<string, number>();
   const shadowApis: ShadowApiEntry[] = [];
+  let telemetrySourceClassification = 'LIVE_RUNTIME_TELEMETRY';
   let environment = 'local';
   let nodeCount = 1;
   let observationStartedAt: string | null = null;
@@ -78,6 +79,7 @@ function loadTelemetryWithShadowDetection(
     try {
       const raw = JSON.parse(fs.readFileSync(found, 'utf8').replace(/^\uFEFF/, ''));
       if (raw._meta) {
+        if (raw._meta.telemetrySourceType) telemetrySourceClassification = String(raw._meta.telemetrySourceType);
         environment = raw._meta.environment || 'local';
         nodeCount = Array.isArray(raw._meta.activeNodes) ? raw._meta.activeNodes.length : Number(raw._meta.nodeCount || 1);
         observationStartedAt = raw._meta.observationStartedAt || null;
@@ -123,6 +125,7 @@ function loadTelemetryWithShadowDetection(
   return {
     map,
     context: {
+      telemetrySourceClassification,
       environment,
       nodeCount,
       expectedMinNodes,

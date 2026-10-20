@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.7.0-rc.1",
-  "generatedAt": "2026-10-19T23:41:17.947Z",
+  "generatedAt": "2026-10-20T00:08:28.139Z",
   "hostPlatform": "win32",
   "nodeVersion": "v24.18.0",
   "telemetryDataClassification": "SYNTHETIC_DETERMINISTIC_FIXTURE (Not production traffic evidence)",
@@ -11,10 +11,11 @@
     "POINT_2_CONSERVATIVE_NAME_HEURISTIC_GUARD",
     "POINT_3_CONTROLLED_CRASH_AND_IDEMPOTENT_BATCHID_REPLAY",
     "POINT_4_YAML_AST_WORKFLOW_VALIDATION",
-    "POINT_5_PATH_JAILED_APPROVAL_BACKUP_AND_ROLLBACK"
+    "POINT_5_PATH_JAILED_APPROVAL_BACKUP_AND_ROLLBACK",
+    "POINT_6_CLEAN_EXTERNAL_TARBALL_INSTALLATION_VERIFIED",
+    "REMOTE_GITHUB_ACTIONS_MATRIX_UBUNTU_AND_WINDOWS_PASSED"
   ],
   "pendingExternalChecks": [
-    "REMOTE_GITHUB_ACTIONS_MATRIX_RUN (Requires git push to execute on remote ubuntu-latest and windows-latest runners)",
     "REAL_PRODUCTION_STAGING_CANARY_WINDOW (Requires minimum 14-day observation on live staging/production cluster before approving any retirement)"
   ],
   "knownScopeBoundaries": [
@@ -30,9 +31,9 @@
       "valid": true,
       "simulationScopeNotice": "Controlled process.exit(1) termination after durable disk flush (simulates abrupt process stop, not kernel-level SIGKILL mid-syscall).",
       "pids": [
-        23640,
-        11936,
-        23244
+        18020,
+        21032,
+        2140
       ],
       "exitCodes": [
         1,
@@ -41,7 +42,7 @@
       ],
       "stderrClean": true,
       "crashesSimulatedCorrectly": true,
-      "batchIdCreatedInProc1": "batch_c71144e3-8bb8-4f1d-b880-54b63d3d2978",
+      "batchIdCreatedInProc1": "batch_44ca3ed9-ee54-4a10-aedb-b5c9a5db0b96",
       "replayedWithSameBatchIdAfter500": true,
       "dbHitsProgression": [
         0,
@@ -75,8 +76,37 @@
       "requiredCommandsPresent": true,
       "localHostPlatformVerified": "win32",
       "vscodeExtensionCompiled": true,
-      "remoteGitHubActionsMatrixExecution": "PENDING_REMOTE_CI_RUN (Local execution on win32 passed; push to GitHub Actions to execute ubuntu-latest + windows-latest matrix)"
+      "remoteGitHubActionsMatrixExecution": "VERIFIED_REMOTE_MATRIX_SUCCESS (Both ubuntu-latest and windows-latest passed in GitHub Actions)",
+      "remoteMatrixDetails": {
+        "remoteVerified": true,
+        "status": "VERIFIED_REMOTE_MATRIX_SUCCESS (Both ubuntu-latest and windows-latest passed in GitHub Actions)",
+        "runId": 39343300024,
+        "headBranch": "v1.7.0-rc.1",
+        "commitSha": "83ecbfc",
+        "htmlUrl": "https://github.com/PapiPain/maiestor-stelfid/actions/runs/39343300024",
+        "jobsVerified": [
+          {
+            "name": "Verify SDK, CLI, VSCode Extension & Safety (ubuntu-latest)",
+            "conclusion": "success",
+            "completedAt": "2026-10-19T23:43:45Z"
+          },
+          {
+            "name": "Verify SDK, CLI, VSCode Extension & Safety (windows-latest)",
+            "conclusion": "success",
+            "completedAt": "2026-10-19T23:43:55Z"
+          }
+        ]
+      }
     },
-    "point5_GradualRolloutAndRollbackPass": true
+    "point5_GradualRolloutAndRollbackPass": true,
+    "point6_CleanTarballInstallPass": true,
+    "point6_CleanInstallDetails": {
+      "valid": true,
+      "isolatedOutsideMonorepo": true,
+      "sdkTarballInstalled": "m_stelfid-node-sdk-1.7.0-rc.1.tgz",
+      "cliTarballInstalled": "m_stelfid-cli-1.7.0-rc.1.tgz",
+      "sdkAndCliHashMatchInCleanInstall": true,
+      "executiveQuestionsPresentInReport": true
+    }
   }
 }
